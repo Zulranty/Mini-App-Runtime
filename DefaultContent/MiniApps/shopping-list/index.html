@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-checkbox-side="right">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d12">
+  <title>Shopping list</title>
+  <link rel="stylesheet" href="styles-v2.css?v=2.0.0">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header" id="appHeader">
+      <div class="header-copy">
+        <h1 id="screenTitle">Purchases</h1>
+        <p id="screenSubtitle">Loading list...</p>
+      </div>
+      <button class="icon-button header-menu-button" id="headerMenuButton" type="button" aria-label="Open menu" aria-haspopup="menu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="12" cy="19" r="1.8"></circle></svg>
+      </button>
+    </header>
+
+    <main class="content" id="content"></main>
+
+    <nav class="bottom-tabs" id="bottomTabs" aria-label="Application Sections">
+      <button class="tab-button is-active" data-action="change-tab" data-tab="shopping" type="button" aria-current="page">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5.5h2l1.7 9.1a2 2 0 0 0 2 1.6h7.6a2 2 0 0 0 1.9-1.4l1.8-6.3H7"></path><circle cx="9.5" cy="19" r="1.3"></circle><circle cx="17.2" cy="19" r="1.3"></circle></svg>
+        <span>Purchases</span>
+      </button>
+      <button class="tab-button" data-action="change-tab" data-tab="products" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h16M4 12h16M4 17.5h10"></path><circle cx="18" cy="17.5" r="2.5"></circle></svg>
+        <span>Goods</span>
+      </button>
+    </nav>
+  </div>
+
+  <div class="popup-menu" id="mainMenu" role="menu" hidden></div>
+  <div class="popup-menu item-menu" id="itemMenu" role="menu" hidden></div>
+
+  <div class="modal-backdrop" id="modalBackdrop" hidden>
+    <section class="modal-sheet" id="modalSheet" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <header class="modal-header">
+        <div>
+          <p class="eyebrow" id="modalEyebrow"></p>
+          <h2 id="modalTitle"></h2>
+        </div>
+        <button class="icon-button close-button" type="button" data-action="close-modal" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+        </button>
+      </header>
+      <form id="modalForm" novalidate></form>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/model-v2.js?v=2.0.0"></script>
+  <script src="js/app-v2.js?v=2.0.0"></script>
+</body>
+</html>

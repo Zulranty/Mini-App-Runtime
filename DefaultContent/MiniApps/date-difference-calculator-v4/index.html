@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#080d18" />
+  <title>Date calculator</title>
+
+  <script type="application/miniapp+json">
+  {
+    "id": "com.htmlframework.datecalculator",
+    "name": "Date calculator",
+    "version": "1.2.0",
+    "sdkVersion": 1,
+    "description": "Calculation of years, months, weeks and days between dates",
+    "author": "Denis",
+    "permissions": []
+  }
+  </script>
+
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080d18;
+      --panel: rgba(17, 25, 44, 0.88);
+      --panel-soft: rgba(255, 255, 255, 0.035);
+      --border: rgba(255, 255, 255, 0.09);
+      --border-active: rgba(112, 225, 255, 0.68);
+      --text: #f6f8ff;
+      --muted: #8e9ab5;
+      --accent: #70e1ff;
+      --accent-2: #8d7dff;
+      --danger: #ff7893;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
+      --radius-xl: 28px;
+      --radius-lg: 21px;
+      --radius-md: 15px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-height: 100%;
+      background: var(--bg);
+    }
+
+    body {
+      min-height: 100vh;
+      min-height: 100dvh;
+      margin: 0;
+      padding:
+        max(18px, env(safe-area-inset-top))
+        max(14px, env(safe-area-inset-right))
+        max(20px, env(safe-area-inset-bottom))
+        max(14px, env(safe-area-inset-left));
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(112, 225, 255, 0.15), transparent 31%),
+        radial-gradient(circle at 92% 12%, rgba(141, 125, 255, 0.17), transparent 34%),
+        linear-gradient(145deg, #080d18 0%, #0b1120 52%, #080b14 100%);
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.28;
+      background-image:
+        linear-gradient(rgba(255,255,255,.024) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.024) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: linear-gradient(to bottom, black, transparent 85%);
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .app {
+      width: min(920px, 100%);
+      margin: 0 auto;
+      padding-top: clamp(4px, 2vw, 20px);
+    }
+
+    .calculator {
+      position: relative;
+      padding: clamp(14px, 3.6vw, 28px);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      background: linear-gradient(145deg, rgba(21, 30, 53, 0.92), rgba(12, 18, 34, 0.9));
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(20px);
+    }
+
+    .calculator::after {
+      content: "";
+      position: absolute;
+      top: -120px;
+      right: -110px;
+      width: 280px;
+      height: 280px;
+      border-radius: 50%;
+      pointer-events: none;
+      background: rgba(112, 225, 255, 0.08);
+      filter: blur(14px);
+    }
+
+    .date-grid {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      align-items: end;
+    }
+
+    .date-card {
+      min-width: 0;
+      padding: 18px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      background: var(--panel-soft);
+      transition: border-color 180ms ease, background 180ms ease;
+    }
+
+    .date-card:focus-within {
+      border-color: rgba(112, 225, 255, 0.34);
+      background: rgba(112, 225, 255, 0.035);
+    }
+
+    .date-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 11px;
+    }
+
+    .date-label strong {
+      font-size: 14px;
+      letter-spacing: 0.01em;
+    }
+
+    .date-label span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .date-input-wrap {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 48px;
+      gap: 9px;
+      align-items: center;
+    }
+
+    .date-text {
+      width: 100%;
+      height: 54px;
+      padding: 0 15px;
+      border: 1px solid rgba(255,255,255,.1);
+      outline: none;
+      border-radius: var(--radius-md);
+      color: var(--text);
+      background: rgba(3, 7, 16, 0.52);
+      font-size: clamp(17px, 3vw, 21px);
+      font-weight: 760;
+      letter-spacing: 0.04em;
+      font-variant-numeric: tabular-nums;
+      transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+    }
+
+    .date-text::placeholder {
+      color: #59657e;
+    }
+
+    .date-text:focus {
+      border-color: var(--border-active);
+      background: rgba(5, 10, 22, 0.76);
+      box-shadow: 0 0 0 4px rgba(112, 225, 255, 0.1);
+    }
+
+    .date-text.invalid {
+      border-color: rgba(255, 120, 147, 0.78);
+      box-shadow: 0 0 0 4px rgba(255, 120, 147, 0.09);
+    }
+
+    .calendar-button,
+    .clear-button,
+    .quick-button {
+      border: 0;
+      cursor: pointer;
+      color: var(--text);
+    }
+
+    .calendar-button {
+      display: grid;
+      width: 48px;
+      height: 48px;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 15px;
+      background: rgba(255,255,255,.055);
+      transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+    }
+
+    .calendar-button:hover {
+      border-color: rgba(112, 225, 255, 0.4);
+      background: rgba(112, 225, 255, 0.11);
+      transform: translateY(-1px);
+    }
+
+    .calendar-button:active,
+    .clear-button:active {
+      transform: translateY(1px) scale(0.985);
+    }
+
+    .calendar-button svg {
+      width: 22px;
+      height: 22px;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.8;
+    }
+
+    .native-date {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 48px;
+      height: 48px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .helper {
+      min-height: 18px;
+      margin: 9px 2px 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .helper.error {
+      color: var(--danger);
+    }
+
+    .quick-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .quick-button {
+      padding: 7px 9px;
+      border-radius: 10px;
+      color: var(--muted);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 720;
+      transition: color 160ms ease, background 160ms ease;
+    }
+
+    .quick-button:hover {
+      color: var(--text);
+      background: rgba(255,255,255,.06);
+    }
+
+    .swap-button {
+      display: grid;
+      width: 54px;
+      height: 54px;
+      place-items: center;
+      margin-bottom: 54px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: linear-gradient(145deg, rgba(112, 225, 255, 0.13), rgba(141, 125, 255, 0.12));
+      transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+    }
+
+    .swap-button:hover {
+      border-color: rgba(112, 225, 255, 0.42);
+      background: linear-gradient(145deg, rgba(112, 225, 255, 0.2), rgba(141, 125, 255, 0.18));
+    }
+
+    .footer-row {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 10px;
+    }
+
+    .clear-button {
+      min-height: 44px;
+      padding: 0 16px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255,255,255,.045);
+      font-size: 13px;
+      font-weight: 760;
+      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+    }
+
+    .clear-button:hover {
+      border-color: rgba(255,255,255,.18);
+      background: rgba(255,255,255,.075);
+    }
+
+    .message {
+      display: none;
+      margin: 10px 3px 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .message:not(:empty) {
+      display: block;
+    }
+
+    .message.error {
+      color: var(--danger);
+    }
+
+    .results {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .report-card {
+      position: relative;
+      min-width: 0;
+      padding: clamp(17px, 3vw, 23px);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      background: var(--panel);
+      box-shadow: 0 16px 50px rgba(0,0,0,.18);
+      transition: transform 220ms ease, border-color 220ms ease, background 220ms ease;
+    }
+
+    .report-card::after {
+      content: "";
+      position: absolute;
+      top: -55px;
+      right: -45px;
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      background: rgba(112, 225, 255, 0.065);
+      pointer-events: none;
+    }
+
+    .report-card:nth-child(even)::after {
+      background: rgba(141, 125, 255, 0.07);
+    }
+
+    .report-card:hover {
+      border-color: rgba(255,255,255,.16);
+      background: rgba(22, 32, 56, 0.96);
+      transform: translateY(-2px);
+    }
+
+    .report-card[hidden] {
+      display: none;
+    }
+
+    .report-label {
+      position: relative;
+      z-index: 1;
+      margin-bottom: 13px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 820;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .report-line {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .report-line strong {
+      overflow: hidden;
+      font-size: clamp(36px, 7vw, 62px);
+      font-weight: 880;
+      line-height: 0.95;
+      letter-spacing: -0.055em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .report-line span {
+      color: var(--text);
+      font-size: clamp(16px, 2.5vw, 22px);
+      font-weight: 760;
+    }
+
+    .report-rest {
+      position: relative;
+      z-index: 1;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .pulse .report-card:not([hidden]) {
+      animation: result-in 300ms cubic-bezier(.2,.8,.2,1);
+    }
+
+    @keyframes result-in {
+      from {
+        opacity: 0.3;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 730px) {
+      .date-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+
+      .swap-button {
+        width: 100%;
+        height: 44px;
+        margin: 0;
+      }
+
+      .swap-button svg {
+        transform: rotate(90deg);
+      }
+    }
+
+    @media (max-width: 560px) {
+      body {
+        padding-left: 11px;
+        padding-right: 11px;
+      }
+
+      .calculator {
+        padding: 13px;
+        border-radius: 23px;
+      }
+
+      .date-card {
+        padding: 14px;
+      }
+
+      .results {
+        grid-template-columns: 1fr;
+        gap: 9px;
+      }
+
+      .report-card {
+        border-radius: 18px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="app">
+    <section class="calculator" aria-label="Date difference calculator">
+      <div class="date-grid">
+        <div class="date-card">
+          <div class="date-label">
+            <strong>First date</strong>
+            <span>DD.MM.YYYY</span>
+          </div>
+
+          <div class="date-input-wrap">
+            <input
+              class="date-text"
+              id="startText"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              maxlength="10"
+              placeholder="01.01.2025"
+              aria-label="First date"
+            />
+
+            <button class="calendar-button" id="startCalendarButton" type="button" aria-label="Open first-date calendar">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 3v3M17 3v3M4.5 9.5h15M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/>
+                <path d="M8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01"/>
+              </svg>
+            </button>
+
+            <input class="native-date" id="startNative" type="date" tabindex="-1" aria-hidden="true" />
+          </div>
+
+          <div class="helper" id="startHelper">Separators are inserted automatically.</div>
+
+          <div class="quick-actions">
+            <button class="quick-button" type="button" data-target="start" data-action="today">Today</button>
+            <button class="quick-button" type="button" data-target="start" data-action="year-start">Start of year</button>
+          </div>
+        </div>
+        <div class="date-card">
+          <div class="date-label">
+            <strong>Second date</strong>
+            <span>DD.MM.YYYY</span>
+          </div>
+
+          <div class="date-input-wrap">
+            <input
+              class="date-text"
+              id="endText"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              maxlength="10"
+              placeholder="01.01.2026"
+              aria-label="Second date"
+            />
+
+            <button class="calendar-button" id="endCalendarButton" type="button" aria-label="Open second-date calendar">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 3v3M17 3v3M4.5 9.5h15M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/>
+                <path d="M8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01"/>
+              </svg>
+            </button>
+
+            <input class="native-date" id="endNative" type="date" tabindex="-1" aria-hidden="true" />
+          </div>
+
+          <div class="helper" id="endHelper">The date is validated automatically.</div>
+
+          <div class="quick-actions">
+            <button class="quick-button" type="button" data-target="end" data-action="today">Today</button>
+            <button class="quick-button" type="button" data-target="end" data-action="year-end">End of year</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-row">
+        <button class="clear-button" id="clearButton" type="button">Clear</button>
+      </div>
+
+      <div class="message" id="message" aria-live="polite"></div>
+    </section>
+
+    <section class="results" id="results" aria-live="polite">
+      <article class="report-card" id="yearsCard" hidden>
+        <div class="report-label">Years</div>
+        <div class="report-line">
+          <strong id="yearsValue">0</strong>
+          <span id="yearsUnit">years</span>
+        </div>
+        <div class="report-rest" id="yearsRest"></div>
+      </article>
+
+      <article class="report-card" id="monthsCard" hidden>
+        <div class="report-label">Months</div>
+        <div class="report-line">
+          <strong id="totalMonthsValue">0</strong>
+          <span id="totalMonthsUnit">months</span>
+        </div>
+        <div class="report-rest" id="monthsRest"></div>
+      </article>
+
+      <article class="report-card" id="weeksCard" hidden>
+        <div class="report-label">Weeks</div>
+        <div class="report-line">
+          <strong id="totalWeeksValue">0</strong>
+          <span id="totalWeeksUnit">weeks</span>
+        </div>
+        <div class="report-rest" id="weeksRest"></div>
+      </article>
+
+      <article class="report-card" id="daysCard" hidden>
+        <div class="report-label">Days</div>
+        <div class="report-line">
+          <strong id="totalDaysValue">0</strong>
+          <span id="totalDaysUnit">days</span>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      const numberFormatter = new Intl.NumberFormat("ru-RU");
+
+      const elements = {
+        startText: document.getElementById("startText"),
+        endText: document.getElementById("endText"),
+        startNative: document.getElementById("startNative"),
+        endNative: document.getElementById("endNative"),
+        startHelper: document.getElementById("startHelper"),
+        endHelper: document.getElementById("endHelper"),
+        message: document.getElementById("message"),
+        results: document.getElementById("results"),
+
+        yearsCard: document.getElementById("yearsCard"),
+        monthsCard: document.getElementById("monthsCard"),
+        weeksCard: document.getElementById("weeksCard"),
+        daysCard: document.getElementById("daysCard"),
+
+        yearsValue: document.getElementById("yearsValue"),
+        yearsUnit: document.getElementById("yearsUnit"),
+        yearsRest: document.getElementById("yearsRest"),
+
+        totalMonthsValue: document.getElementById("totalMonthsValue"),
+        totalMonthsUnit: document.getElementById("totalMonthsUnit"),
+        monthsRest: document.getElementById("monthsRest"),
+
+        totalWeeksValue: document.getElementById("totalWeeksValue"),
+        totalWeeksUnit: document.getElementById("totalWeeksUnit"),
+        weeksRest: document.getElementById("weeksRest"),
+
+        totalDaysValue: document.getElementById("totalDaysValue"),
+        totalDaysUnit: document.getElementById("totalDaysUnit")
+      };
+
+      function pad(value) {
+        return String(value).padStart(2, "0");
+      }
+
+      function createUtcDate(year, month, day) {
+        const date = new Date(0);
+        date.setUTCFullYear(year, month - 1, day);
+        date.setUTCHours(0, 0, 0, 0);
+        return date;
+      }
+
+      function isValidDateParts(year, month, day) {
+        if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+          return false;
+        }
+
+        if (year < 1 || year > 9999 || month < 1 || month > 12 || day < 1 || day > 31) {
+          return false;
+        }
+
+        const date = createUtcDate(year, month, day);
+
+        return (
+          date.getUTCFullYear() === year &&
+          date.getUTCMonth() === month - 1 &&
+          date.getUTCDate() === day
+        );
+      }
+
+      function parseDisplayDate(value) {
+        const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value.trim());
+        if (!match) return null;
+
+        const day = Number(match[1]);
+        const month = Number(match[2]);
+        const year = Number(match[3]);
+
+        return isValidDateParts(year, month, day)
+          ? createUtcDate(year, month, day)
+          : null;
+      }
+
+      function parseIsoDate(value) {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+        if (!match) return null;
+
+        const year = Number(match[1]);
+        const month = Number(match[2]);
+        const day = Number(match[3]);
+
+        return isValidDateParts(year, month, day)
+          ? createUtcDate(year, month, day)
+          : null;
+      }
+
+      function toDisplayDate(date) {
+        return `${pad(date.getUTCDate())}.${pad(date.getUTCMonth() + 1)}.${String(date.getUTCFullYear()).padStart(4, "0")}`;
+      }
+
+      function toIsoDate(date) {
+        return `${String(date.getUTCFullYear()).padStart(4, "0")}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+      }
+
+      function formatTyping(value) {
+        const digits = value.replace(/\D/g, "").slice(0, 8);
+        const parts = [];
+
+        if (digits.length > 0) parts.push(digits.slice(0, 2));
+        if (digits.length > 2) parts.push(digits.slice(2, 4));
+        if (digits.length > 4) parts.push(digits.slice(4, 8));
+
+        return parts.join(".");
+      }
+
+      function plural(number, one, few, many) {
+        const absolute = Math.abs(number) % 100;
+        const last = absolute % 10;
+
+        if (absolute > 10 && absolute < 20) return many;
+        if (last > 1 && last < 5) return few;
+        if (last === 1) return one;
+        return many;
+      }
+
+      function addMonthsClamped(date, months) {
+        const sourceYear = date.getUTCFullYear();
+        const sourceMonth = date.getUTCMonth();
+        const sourceDay = date.getUTCDate();
+
+        const rawMonth = sourceMonth + months;
+        const targetYear = sourceYear + Math.floor(rawMonth / 12);
+        const targetMonth = ((rawMonth % 12) + 12) % 12;
+        const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+
+        return createUtcDate(targetYear, targetMonth + 1, Math.min(sourceDay, lastDay));
+      }
+
+      function getCompleteMonths(earlier, later) {
+        let months =
+          (later.getUTCFullYear() - earlier.getUTCFullYear()) * 12 +
+          (later.getUTCMonth() - earlier.getUTCMonth());
+
+        let anchor = addMonthsClamped(earlier, months);
+
+        if (anchor.getTime() > later.getTime()) {
+          months -= 1;
+          anchor = addMonthsClamped(earlier, months);
+        }
+
+        return { months, anchor };
+      }
+
+      function calculateDifference(dateA, dateB) {
+        const earlier = dateA.getTime() <= dateB.getTime() ? dateA : dateB;
+        const later = dateA.getTime() <= dateB.getTime() ? dateB : dateA;
+        const reversed = dateA.getTime() > dateB.getTime();
+
+        const totalDays = Math.round((later.getTime() - earlier.getTime()) / DAY_MS);
+        const totalWeeks = Math.floor(totalDays / 7);
+        const weeksRemainingDays = totalDays % 7;
+
+        const monthResult = getCompleteMonths(earlier, later);
+        const totalMonths = monthResult.months;
+        const monthsRemainingDays = Math.round(
+          (later.getTime() - monthResult.anchor.getTime()) / DAY_MS
+        );
+
+        const years = Math.floor(totalMonths / 12);
+        const remainingMonths = totalMonths % 12;
+        const yearsAnchor = addMonthsClamped(earlier, years * 12 + remainingMonths);
+        const yearsRemainingDays = Math.round(
+          (later.getTime() - yearsAnchor.getTime()) / DAY_MS
+        );
+
+        return {
+          reversed,
+          years,
+          remainingMonths,
+          yearsRemainingDays,
+          totalMonths,
+          monthsRemainingDays,
+          totalWeeks,
+          weeksRemainingDays,
+          totalDays
+        };
+      }
+
+      function getField(name) {
+        return name === "start"
+          ? {
+              text: elements.startText,
+              native: elements.startNative,
+              helper: elements.startHelper,
+              normalHelper: "Separators are inserted automatically."
+            }
+          : {
+              text: elements.endText,
+              native: elements.endNative,
+              helper: elements.endHelper,
+              normalHelper: "The date is validated automatically."
+            };
+      }
+
+      function clearFieldError(name) {
+        const field = getField(name);
+        field.text.classList.remove("invalid");
+        field.helper.classList.remove("error");
+        field.helper.textContent = field.normalHelper;
+      }
+
+      function setFieldError(name, text) {
+        const field = getField(name);
+        field.text.classList.add("invalid");
+        field.helper.classList.add("error");
+        field.helper.textContent = text;
+      }
+
+      function setFieldDate(name, date) {
+        const field = getField(name);
+        field.text.value = toDisplayDate(date);
+        field.native.value = toIsoDate(date);
+        clearFieldError(name);
+      }
+
+      function validateField(name) {
+        const field = getField(name);
+
+        if (field.text.value.length < 10) {
+          return null;
+        }
+
+        const date = parseDisplayDate(field.text.value);
+
+        if (!date) {
+          setFieldError(name, "This date does not exist.");
+          return null;
+        }
+
+        field.native.value = toIsoDate(date);
+        clearFieldError(name);
+        return date;
+      }
+
+      function openCalendar(name) {
+        const field = getField(name);
+        const parsed = parseDisplayDate(field.text.value);
+
+        if (parsed) {
+          field.native.value = toIsoDate(parsed);
+        }
+
+        if (typeof field.native.showPicker === "function") {
+          field.native.showPicker();
+          return;
+        }
+
+        field.native.style.pointerEvents = "auto";
+        field.native.focus();
+        field.native.click();
+        field.native.style.pointerEvents = "none";
+      }
+
+      function setMessage(text = "", type = "") {
+        elements.message.textContent = text;
+        elements.message.className = `message${type ? ` ${type}` : ""}`;
+      }
+
+      function hideResults() {
+        elements.yearsCard.hidden = true;
+        elements.monthsCard.hidden = true;
+        elements.weeksCard.hidden = true;
+        elements.daysCard.hidden = true;
+      }
+
+      function showResults(result) {
+        const hasYears = result.years > 0;
+        const hasMonths = result.totalMonths > 0;
+        const hasWeeks = result.totalWeeks > 0;
+        const hasDays = result.totalDays > 0;
+
+        elements.yearsCard.hidden = !hasYears;
+        elements.monthsCard.hidden = !hasMonths;
+        elements.weeksCard.hidden = !hasWeeks;
+        elements.daysCard.hidden = !hasDays;
+
+        if (hasYears) {
+          elements.yearsValue.textContent = numberFormatter.format(result.years);
+          elements.yearsUnit.textContent = plural(result.years, "year", "years", "years");
+          elements.yearsRest.textContent =
+            `${numberFormatter.format(result.remainingMonths)} ` +
+            `${plural(result.remainingMonths, "month", "months", "months")} and` +
+            `${numberFormatter.format(result.yearsRemainingDays)} ` +
+            `${plural(result.yearsRemainingDays, "day", "days", "days")} remaining`;
+        }
+
+        if (hasMonths) {
+          elements.totalMonthsValue.textContent = numberFormatter.format(result.totalMonths);
+          elements.totalMonthsUnit.textContent = plural(result.totalMonths, "month", "months", "months");
+          elements.monthsRest.textContent =
+            `${numberFormatter.format(result.monthsRemainingDays)} ` +
+            `${plural(result.monthsRemainingDays, "day", "days", "days")} remaining`;
+        }
+
+        if (hasWeeks) {
+          elements.totalWeeksValue.textContent = numberFormatter.format(result.totalWeeks);
+          elements.totalWeeksUnit.textContent = plural(result.totalWeeks, "week", "weeks", "weeks");
+          elements.weeksRest.textContent =
+            `${numberFormatter.format(result.weeksRemainingDays)} ` +
+            `${plural(result.weeksRemainingDays, "day", "days", "days")} remaining`;
+        }
+
+        if (hasDays) {
+          elements.totalDaysValue.textContent = numberFormatter.format(result.totalDays);
+          elements.totalDaysUnit.textContent = plural(result.totalDays, "day", "days", "days");
+        }
+
+        elements.results.classList.remove("pulse");
+        void elements.results.offsetWidth;
+        elements.results.classList.add("pulse");
+
+        if (!hasDays) {
+          setMessage("The dates are the same.");
+        } else if (result.reversed) {
+          setMessage("Date order does not matter ? the absolute difference is shown.");
+        } else {
+          setMessage("");
+        }
+      }
+
+      function calculate() {
+        const startValue = elements.startText.value.trim();
+        const endValue = elements.endText.value.trim();
+
+        if (startValue.length < 10 || endValue.length < 10) {
+          hideResults();
+          setMessage("");
+          return;
+        }
+
+        const startDate = validateField("start");
+        const endDate = validateField("end");
+
+        if (!startDate || !endDate) {
+          hideResults();
+          setMessage("Check the dates.", "error");
+          return;
+        }
+
+        showResults(calculateDifference(startDate, endDate));
+      }
+
+      ["start", "end"].forEach((name) => {
+        const field = getField(name);
+
+        field.text.addEventListener("input", (event) => {
+          event.target.value = formatTyping(event.target.value);
+          clearFieldError(name);
+
+          const parsed = parseDisplayDate(event.target.value);
+          field.native.value = parsed ? toIsoDate(parsed) : "";
+
+          calculate();
+        });
+
+        field.text.addEventListener("blur", () => {
+          if (field.text.value.length === 10) {
+            validateField(name);
+          }
+        });
+
+        field.native.addEventListener("change", () => {
+          const selected = parseIsoDate(field.native.value);
+
+          if (selected) {
+            setFieldDate(name, selected);
+            calculate();
+          }
+        });
+      });
+
+      document.getElementById("startCalendarButton").addEventListener("click", () => openCalendar("start"));
+      document.getElementById("endCalendarButton").addEventListener("click", () => openCalendar("end"));
+
+      document.getElementById("clearButton").addEventListener("click", () => {
+        ["start", "end"].forEach((name) => {
+          const field = getField(name);
+          field.text.value = "";
+          field.native.value = "";
+          clearFieldError(name);
+        });
+
+        hideResults();
+        setMessage("");
+        elements.startText.focus();
+      });
+
+      document.querySelectorAll("[data-action]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const now = new Date();
+          const year = now.getFullYear();
+          let date;
+
+          switch (button.dataset.action) {
+            case "today":
+              date = createUtcDate(year, now.getMonth() + 1, now.getDate());
+              break;
+            case "year-start":
+              date = createUtcDate(year, 1, 1);
+              break;
+            case "year-end":
+              date = createUtcDate(year, 12, 31);
+              break;
+            default:
+              return;
+          }
+
+          setFieldDate(button.dataset.target, date);
+          calculate();
+        });
+      });
+
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const yearStart = createUtcDate(currentYear, 1, 1);
+      const today = createUtcDate(currentYear, now.getMonth() + 1, now.getDate());
+
+      setFieldDate("start", yearStart);
+      setFieldDate("end", today);
+      calculate();
+    })();
+  </script>
+</body>
+</html>

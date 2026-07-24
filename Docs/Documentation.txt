@@ -1,0 +1,748 @@
+# Architecture
+
+## Overview
+
+Mini App Runtime has three layers:
+
+```text
+HTML mini-app or launcher interface
+        │
+        ├── runtime.js / launcher-runtime.js
+        │
+Native Android or Windows host
+        │
+Local mini-app files, settings, and platform services
+```
+
+Mini-app pages use `mini.*`; trusted launcher interfaces use `launcher.*`. The JavaScript bridges serialize calls to JSON messages. Each native host validates the request, performs the permitted operation, and resolves or rejects the corresponding Promise.
+
+## Hosts
+
+Android is a Kotlin application built with Android Gradle Plugin. It uses Android WebView, stores shared content under `/storage/emulated/0/MiniApps`, and exposes Android-specific services such as notifications, directory access, and haptics.
+
+Windows is a .NET 8 WinForms application using WebView2. It uses virtual host mappings for local HTML content and keeps its complete runtime state next to `MiniApps.exe`. The published application is framework-dependent, single-file, and uses the system WebView2 Runtime.
+
+## Content and installation
+
+`DefaultContent/Interface` and `DefaultContent/MiniApps` are Windows package inputs. During publishing they become `Interface/` and `MiniApps/` beside the executable, so the Windows build remains self-contained after publication.
+
+Mini-app installation is manifest-based. The host validates a package, stages it outside the active app tree, and replaces the active directory only after validation succeeds. The stable `manifest.id` identifies the app; public `storage.json` is retained during an update. One rollback copy may be retained by the host.
+
+## Trust boundaries
+
+Mini-apps receive opaque file and directory capability IDs, never host paths. Permissions are declared in the manifest and stored per `manifest.id`. Secure storage is encrypted by the platform and is not shared or included in ordinary backups. Controlled network requests use a manifest allowlist and are separate from browser `fetch`.
+
+## Build outputs
+
+`Build/` contains durable build configuration and scripts. `Cache/` holds regenerated outputs. `Output/` holds distributable files only. The Windows script builds the installer; the Android script builds the release APK.
+
+
+# Interface module
+
+The launcher interface is an externally editable HTML/CSS/JavaScript module. The runtime adds the small bridge automatically; `index.html` only needs its own markup and scripts.
+
+On Android it is created at:
+
+```text
+/storage/emulated/0/MiniApps/Interface
+```
+
+`Interface` is a collection of launcher themes. Each subfolder is one interface and must contain `index.html`; it may be a self-contained HTML file or a set of HTML/CSS/JS files. The active interface is selected in **Settings → Interface**. ZIP and HTML files placed directly in `Interface` are scanned into interface folders; the same formats can be added through the native file picker.
+
+The bundled `default/index.html` is self-contained: Android and Windows create only this one file for the default interface. Imported ZIP/folder interfaces may include additional files when their own `index.html` uses them.
+
+On Windows it is created beside `MiniApps.exe` in the selected installation folder:
+
+```text
+<installation-folder>/Interface
+```
+
+The same `Interface/<name>/index.html` layout, active-interface selection, root HTML/ZIP scan, and native import are supported on Windows.
+
+On Windows, the installer packages every interface from `DefaultContent/Interface`. Each interface is a folder with `index.html`; the default package is `DefaultContent/Interface/default/index.html`. Custom installed interface folders are preserved unless their packaged files share the same path.
+
+If the selected interface is removed outside the runtime, the next launch automatically selects and saves the first remaining valid interface (alphabetically by folder name). A valid interface is a subfolder containing `index.html`.
+
+## Windows launcher controls
+
+- Click an app card to open it in the main window.
+- Right-click an app card to open the launcher context menu with **Open** and **Open in new window**.
+- Middle-click an app card to open it in a separate window.
+- The app view in the main window provides a **← Back** button to return to the launcher.
+- When an additional app window is open, closing the main window hides it in the notification area. Double-click the tray icon or choose **Open** to restore it; choose **Exit** to exit.
+
+The built-in WebView2 context menu is disabled so it does not override the launcher menu.
+
+## Native top bar configuration (Windows)
+
+When an interface provides an appbar, it belongs to that interface: `Interface/<name>/appbar.js` and `Interface/<name>/appbar.css`. It is loaded into mini-apps while this interface is active; the bar itself is rendered by the Windows application.
+
+```js
+await mini.ui.setTopBar({
+  height: 60,
+  title: document.title,
+  background: '#12141c',
+  foreground: '#f6f7fb',
+  accent: '#365bff',
+  paddingX: 14,
+  paddingY: 10,
+  titleFontSize: 11,
+  showBack: true,
+  backText: '← Back',
+  backButton: {
+    radius: 20,
+    paddingX: 16,
+    background: '#5271ff',
+    hoverBackground: '#6b86ff',
+    foreground: '#ffffff',
+    border: '#b7c4ff',
+    borderOpacity: 105,
+    fontSize: 9.5
+  },
+  actions: [{ id: 'save', label: 'Save', accent: true }]
+});
+
+mini.events.on('ui.topBarAction', id => {
+  if (id === 'save') saveDocument();
+});
+```
+
+Supported fields are `visible`, `height` (40–120 px), `paddingX`, `paddingY`, `titleFontSize`, `title`, `background`, `foreground`, `accent`, `showBack`, `backText`, `backButton`, and up to four `actions`. `backButton` controls the full back-button shape and styling: `radius`, `paddingX`, `background`, `hoverBackground`, `foreground`, `border`, `borderOpacity`, and `fontSize`. Colors must be `#RRGGBB`. The host draws it using a lightweight custom control, so the area outside its rounded shape remains the top-bar background. Use `mini.ui.hideTopBar()` to hide the bar.
+
+Available JavaScript API:
+
+```js
+await launcher.list();
+await launcher.getAppInfo(appId); // manifest, dates, and size breakdown
+await launcher.open(appId);
+await launcher.refresh();
+await launcher.importApp();
+await launcher.openNewWindow(appId); // Windows: separate window
+await launcher.getInterfaceSettings(); // JSON object for the active interface, or {}
+await launcher.setInterfaceSettings(settings); // JSON-compatible object
+```
+
+## Interface settings
+
+`launcher.getInterfaceSettings()` and `launcher.setInterfaceSettings(settings)` store settings for the active launcher interface on Android and Windows. Each interface owns `Interface/<active-interface-id>/settings.json`; the native host derives this path from the selected interface, so interface JavaScript cannot choose another destination.
+
+The getter returns `{}` when the file is absent, unreadable, malformed, or contains a non-object JSON value. The setter accepts only a JSON object, serializes at most 64 KiB (UTF-8), and replaces the file through a flushed temporary file and atomic rename. Switching interfaces changes the settings file used by subsequent calls. Removing or replacing an interface directory also removes its settings with that directory.
+
+## Common mini-app strip
+
+Runtime adds two standard header files to the same folder:
+
+```text
+Interface/
+├─ appbar.css
+└─ appbar.js
+```
+
+They automatically connect to all pages of every mini-app on Android and Windows. By default, the bar is fixed at the top of the window and contains the `← Back` button.
+
+Clicking this button returns to the launcher: on Android it closes the current Activity mini-app, and on Windows it returns to the main window. If the mini-app was opened in a separate Windows window, the button closes this window.
+
+Modify `appbar.js` and `appbar.css` to add any buttons, labels or custom logic to the strip. These files run in the context of each mini-app and have access to `mini.*`.
+
+## Windows windows
+
+A simple click on the mini-app opens it in the same main window. On Windows, you can open the application separately:
+
+- middle mouse button on the mini-app card;
+- the item `Open in new window` in the context menu of the card;
+- via `await launcher.openNewWindow(appId)` in the JavaScript of the launcher interface.
+
+## Updating an existing Interface
+
+The Windows installer updates the interface files from `DefaultContent/Interface/`. Additional user interface folders in the installed program are not deleted; runtime does not copy the legacy template from `Code/Framework/shared/launcher-interface/`.
+
+## System API compatibility
+
+Interface code should call `mini.runtime.supports(name)` before presenting controls for optional system features. `mini.ui.setTopBar()` remains available on Windows. Controlled HTTP, file handles, native dialogs, clipboard reads, and external opening must use their `mini.*` APIs rather than relying on browser privileges.
+
+Do not present notification or haptics controls in a Windows launcher interface without checking capabilities. Android notification actions may open a mini-app with `mini.app.getLaunchParams()` containing a notification ID and payload; Windows currently supplies only the normal launch context.
+
+
+# Managing mini-apps
+
+## Application information
+
+`launcher.getAppInfo(appId)` is available to Android and Windows launcher interfaces. It returns the selected app's manifest, installation and update timestamps, and application and data sizes.
+
+The runtime uses the same launcher contract on Android and Windows: `list`, `open`, `refresh`, `importApp`, `deleteApp`, `shareApp`, `shareAppData`, and `getSettingsInfo`; Windows additionally supports `openNewWindow`. The interface manager provides `listInterfaces`, `selectInterface(id)`, `importInterface()`, `getInterfaceSettings()`, and `setInterfaceSettings(settings)`. Interface settings are a JSON object in the active interface's `settings.json`, limited to 64 KiB and written atomically; a missing or corrupted file reads as `{}`.
+
+On Android, the working folder is `/storage/emulated/0/MiniApps`. The runtime does not import or migrate data from any previous application folder.
+
+Source ZIP and HTML files are not kept after installation. Automatic scanning processes packages placed directly in `MiniApps`, while the system picker installs the selected package without creating a second copy. Installation is identified by `manifest.id`, accepts only a newer version, and preserves public `storage.json` on update.
+
+The app-card menu can delete or share an app and share its public `storage.json`. App sharing creates a single HTML file only for a self-contained HTML app with an embedded manifest; otherwise it creates a ZIP containing the app code. User data, including `storage.json`, is excluded. Data sharing exports only public `storage.json`. Deletion also clears private storage and stored permission decisions. Android uses the system Sharesheet with a `content://` FileProvider; Windows copies a file to the clipboard for pasting into Explorer or another application. Windows `mini.share.text()` and `mini.share.file()` also copy their text or file payload to the clipboard. Private storage is never exported.
+
+## Launcher interfaces
+
+On Android, interfaces reside in `MiniApps/Interface/<interface-id>/`; on Windows, they reside in `Interface/<interface-id>/` beside `MiniApps.exe`. Select the active interface in **Settings → Interface**; it is used by both the launcher and mini-app app bars. The built-in `default` contains only `index.html`, with its CSS and launcher JavaScript embedded. HTML and ZIP files placed directly in `Interface/` are scanned as new interfaces; the same import is available from **Add interface**. Folder and ZIP interfaces may contain additional files. An interface-specific mini-app app bar is stored beside the interface as `appbar.css` and `appbar.js`.
+
+If the active interface is removed manually, the runtime selects and saves the first valid interface alphabetically on the next launch. A valid interface folder contains `index.html`.
+
+
+# Mini-app format
+
+Mini-app can be placed in `/storage/emulated/0/MiniApps` in several ways:
+
+- ZIP archive.
+- Ready folder.
+- A single HTML file with a built-in manifest.
+- A regular HTML file without manifest, with manual data entry via popup.
+
+## Folder or ZIP
+
+The structure of a regular mini-app:
+
+```text
+example-mini-app/
+├── manifest.json
+├── index.html
+├── app.js
+├── style.css
+└── assets/
+```
+
+Minimal `manifest.json`:
+
+```json
+{
+  "id": "com.example.demo",
+  "name": "Demo App",
+  "version": "1.0.0",
+  "sdkVersion": 1,
+  "entry": "index.html"
+}
+```
+
+Supported fields:
+
+```text
+id
+name
+version
+sdkVersion
+minRuntimeVersion
+entry
+description
+author
+icon
+permissions
+network
+```
+
+Supported permissions:
+
+```text
+storage
+clipboard.write
+files.pick
+files.save
+share
+secureStorage
+network
+notifications
+clipboard.read
+files.directory
+system.open
+haptics
+```
+
+The `icon` field can point to a PNG/JPG file inside the mini-app folder:
+
+```json
+{
+  "icon": "assets/icon.png"
+}
+```
+
+Paths must be relative, without `..`, without absolute paths and without going beyond the mini-app folder.
+
+## ZIP update logic
+
+If `demo.zip` is found, it is installed to:
+
+```text
+MiniApps/demo/
+```
+
+After successful installation, the original ZIP is not saved: the application is deployed in its own folder. When sent, the launcher creates a new ZIP from the application files, excluding user data.
+
+If the `demo/` folder already exists, the launcher reads manifest from the folder and from the ZIP:
+
+- if `id` matches and the version in ZIP is newer, the folder is updated;
+- if the version is the same or older, the installed application and the saved source do not change;
+- if the ZIP is broken or the manifest is invalid, the ZIP remains in place.
+
+When updating, the public `storage.json` is saved.
+
+## Single-file HTML
+
+One HTML file can contain manifest within itself:
+
+```html
+<script type="application/miniapp+json">
+{
+  "id": "com.example.hsv",
+  "name": "HSV Editor",
+  "version": "1.0.0",
+  "sdkVersion": 1,
+  "description": "Single-file HSV color editor",
+  "permissions": ["storage", "clipboard.write"]
+}
+</script>
+```
+
+`entry` can be omitted. During installation, runtime will name the HTML file based on the `name` field of the manifest: for example, `HSV Editor.html`, and write this name to `entry`. Invalid characters for the file name are replaced with `_`.
+
+For example `hsv-editor.html` will be set as:
+
+```text
+MiniApps/hsv-editor/
+├── manifest.json
+└── HSV Editor.html
+```
+
+## HTML without manifest
+
+If the launcher finds `.html` without embedded manifest, it shows the “Unclear HTML” popup.
+
+In popup you can enter:
+
+- App ID
+- Name
+- Version
+- Description
+- Author
+- Permissions
+
+After confirmation, the file is installed as a regular mini-app:
+
+```text
+MiniApps/<html-file-name>/
+├── manifest.json
+└── <application name>.html
+```
+
+Popup validates `id`, required fields and permissions before installation.
+
+## Storage
+
+`mini.storage.*` is private by default.
+
+Public data is written explicitly via `mini.storage.public.*` to the file:
+
+```text
+MiniApps/<mini-app folder>/storage.json
+```
+
+## System permissions and network policy
+
+Alongside the existing permissions, manifests may declare `network`, `notifications`, `clipboard.read`, `files.directory`, `system.open`, and `haptics`. New permissions are prompted after an update and are never granted automatically.
+
+Controlled HTTP requests require both the `network` permission and an explicit allowlist:
+
+```json
+{
+  "permissions": ["network"],
+  "network": {
+    "allow": ["https://api.example.com", "https://*.example.com"],
+    "allowHttp": false,
+    "allowSubdomains": false,
+    "allowLocalNetwork": false
+  }
+}
+```
+
+Only exact origins and leading host wildcards are accepted. `*.example.com` does not include `example.com`. HTTP and local/private addresses require their corresponding explicit flags. The policy applies only to `mini.network.request`, not browser `fetch`.
+
+## Notifications
+
+Android mini-apps may declare `notifications` and schedule a one-time notification with `at`, a daily/weekly local-time schedule, or an `interval` from 15 minutes to seven days. Notification payloads must be JSON and are limited to 16 KiB. Windows declares the same permission for manifest compatibility but reports notification scheduling unavailable through capabilities.
+
+
+# Managing mini-apps
+
+The launcher API reserves `createBackup`, `inspectBackup`, `restoreBackup`, permission-management, and rollback methods in the common JS contract. Backup archives use the `miniapps-backup` ZIP format version 1 with `backup-manifest.json` and per-app manifest/source/public/private/permission entries. Restore is specified as atomic per application and only supports `replace` and `skip`; it must inspect conflicts (`not_installed`, `same_version`, `backup_newer`, `installed_newer`) before changing data.
+
+## Implemented launcher management APIs
+
+Importing a package with the same `manifest.id` and version replaces the active
+mini-app, which allows a corrected package to be delivered without a version
+bump. Packages with an older version are rejected. Updates preserve public
+`storage.json`.
+
+`refresh()` scans packages placed directly in `MiniApps`. Picker imports install
+the selected package directly; the runtime does not retain a second source copy.
+
+Trusted launcher interfaces on Android and Windows can call `launcher.getAppInfo(appId)` to obtain the selected app's manifest, installation and update timestamps, and application/data size breakdown. On Windows, trusted launcher interfaces can additionally call:
+
+- `launcher.getRollbackInfo(appId)` — returns `{ available, currentVersion, previousVersion, createdAt }` when a retained version exists.
+- `launcher.rollbackApp(appId)` — validates and swaps the active and retained app directories.
+- `launcher.deleteRollback(appId)` — removes only the retained version.
+- `launcher.getAppPermissions(appId)` — returns declared permissions with their `granted`, `denied`, or `prompt` state.
+- `launcher.setAppPermission(appId, permission, state)` — changes a declared permission to `granted`, `denied`, or `prompt`.
+- `launcher.resetAppPermissions(appId)` — restores all permission decisions to `prompt`.
+
+Rollback preserves public, private, and secure user data. This avoids accidental data loss, but an older app version can be incompatible with current data and must handle its own migration. Only one previous version is retained in `MiniApps/.runtime/rollback/<appId>/` with `miniapps-rollback` metadata format version 1.
+
+Android uses equivalent repository-level rollback metadata and swaps, but these launcher methods are not yet exposed to its custom launcher interface. Do not show rollback controls without feature detection.
+
+The trusted launcher UI—not a mini-app—owns backup selection, restore approval, private-data warning, permission management, and rollback confirmation. Secure storage is deliberately not backed up. The current host implementation exposes the contract but does not yet expose a complete native backup/restore dialog flow; callers must feature-detect `backup.restore`.
+
+## Stage 2 permissions
+
+The launcher permission manager displays all manifest-declared permissions, including `network`, `notifications`, `clipboard.read`, `files.directory`, `system.open`, and `haptics`. When an app update adds one, its decision is left at `prompt`; when an update removes one, the stored decision is deleted. Decisions remain isolated by `manifest.id`.
+
+Deleting an Android mini-app cancels its scheduled notifications and removes its persisted directory grants, notification records, permission decisions, public source, and private data. Updating an app with the same `manifest.id` preserves its notification records.
+
+
+# Mini App Runtime documentation
+
+Mini App Runtime is a local-first host for HTML mini-apps on Android and Windows. A mini-app is a normal set of HTML, CSS, JavaScript, and assets; the native host adds a small, asynchronous `mini.*` bridge for platform features.
+
+The project is designed for editable, offline-capable mini-apps rather than hosted web applications. It does not bundle Chromium: Android uses the system WebView and Windows uses the installed Microsoft Edge WebView2 Runtime.
+
+## Start here
+
+1. Build the platform you need from the repository root:
+
+   ```bat
+   build\Scripts\BuildWindows.cmd
+   build\Scripts\BuildAndroid.cmd
+   ```
+
+   `BuildWindows.cmd` produces `Output/Windows/MiniAppsSetup.exe`; `BuildAndroid.cmd` produces `Output/Android/MiniApps.apk`. The scripts do not build an Android debug APK.
+
+2. Create a folder containing `manifest.json` and `index.html`.
+
+   ```text
+   hello-mini-app/
+   |- manifest.json
+   `- index.html
+   ```
+
+3. Install the folder or its ZIP archive in the launcher. On Android, packages can also be placed in `/storage/emulated/0/MiniApps`.
+
+## Requirements
+
+| Target | Build requirements | Runtime requirements |
+| --- | --- | --- |
+| Android | JDK 17+, Android SDK Platform 35, committed Gradle Wrapper | Android 7.0 (API 24) or later and Android System WebView |
+| Windows | .NET SDK 8+, Inno Setup 6+ | x64 .NET Desktop Runtime 8+ and Microsoft Edge WebView2 Runtime |
+
+The Gradle Wrapper downloads Gradle 8.14 on its first use. Windows restores NuGet packages when the local restore cache is absent, so the first build needs internet access.
+
+## Documentation map
+
+- [Architecture](architecture.md) — components, data flow, and repository layout.
+- [Mini-app format](mini-app-format.md) — manifests, packaging, updates, permissions, network policy, and notifications.
+- [Runtime API](runtime-api.md) — the `mini.*` bridge, feature detection, limits, and platform availability.
+- [Launcher management](launcher-management.md) — application lifecycle, sharing, rollback, and trusted launcher operations.
+- [Launcher interface module](interface-module.md) — editable launcher interfaces and Windows app bars.
+- [Security model](security-model.md) — trust boundaries, storage isolation, file capabilities, and network controls.
+- [Windows build details](windows-build.md) and [Windows distribution](windows-distribution.md) — publish layout, installer behavior, and updates.
+
+## Mini-app example
+
+```json
+{
+  "id": "com.example.hello",
+  "name": "Hello",
+  "version": "1.0.0",
+  "sdkVersion": 2,
+  "entry": "index.html",
+  "permissions": ["storage"]
+}
+```
+
+```html
+<!doctype html>
+<meta charset="utf-8">
+<title>Hello</title>
+<button id="increment">Count: 0</button>
+<script>
+  const button = document.querySelector('#increment');
+  let count = 0;
+
+  button.addEventListener('click', async () => {
+    count += 1;
+    await mini.storage.set('count', count);
+    button.textContent = `Count: ${count}`;
+  });
+</script>
+```
+
+All bridge calls return a `Promise`. Call `mini.runtime.supports(name)` or `mini.runtime.getCapabilities()` before using optional platform features.
+
+## Runtime data locations
+
+Android uses `/storage/emulated/0/MiniApps` for installed mini-apps and editable launcher interfaces. Android 11+ requires the system **All files access** permission for direct access to that shared folder.
+
+Windows keeps application state in the chosen installation folder. `MiniApps/` contains installed mini-apps, `Interface/` contains launcher interfaces, `Config/` contains launcher configuration and permission decisions, and `Data/User/` contains private and secure user data. Public mini-app data is the portable `storage.json` file in the mini-app folder.
+
+## Manifest reference
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `id` | Yes | Stable identifier. Use Latin letters, digits, dots, hyphens, and underscores. |
+| `name` | Yes | Display name. |
+| `version` | Yes | Semantic version used for update decisions. |
+| `sdkVersion` | Yes | Mini-app SDK version (`1` or `2`). |
+| `entry` | No | Relative HTML entry path; defaults to `index.html`. |
+| `minRuntimeVersion` | No | Minimum runtime SemVer required to launch the app. |
+| `description`, `author`, `icon` | No | Display metadata. `icon` is a relative PNG or JPG path. |
+| `permissions` | No | Requested capabilities. |
+| `network` | Required for controlled network access | Origin allowlist and opt-in network flags. |
+
+Supported permissions are `storage`, `clipboard.write`, `clipboard.read`, `files.pick`, `files.save`, `files.directory`, `share`, `secureStorage`, `network`, `notifications`, `system.open`, and `haptics`.
+
+## API quick reference
+
+| Namespace | Purpose |
+| --- | --- |
+| `mini.app` | App metadata, close, launch parameters, and the Windows window title. |
+| `mini.runtime` | Capabilities and feature detection. |
+| `mini.storage` | Private JSON storage, public portable storage, schema versions, and atomic transactions. |
+| `mini.permissions` | Query and request manifest-declared permissions. |
+| `mini.secureStorage` | Encrypted, app-scoped secrets. |
+| `mini.files` | File and directory capability handles, chunked reads and writes, and save dialogs. |
+| `mini.network` | Controlled, allowlisted HTTP requests and normalized network status. |
+| `mini.notifications` | Android notification scheduling. |
+| `mini.clipboard`, `mini.share`, `mini.ui`, `mini.system` | Native clipboard, sharing, dialogs, top bar, and validated system opening. |
+| `mini.events` | Navigation, permission, network, and lifecycle events. |
+
+Every call is asynchronous and may reject with a stable error `code`. Use `mini.runtime.supports(name)` before presenting optional controls. See [Runtime API](runtime-api.md) for limits, errors, platform availability, and complete behavior.
+
+## Update and sharing behavior
+
+The runtime identifies an installed mini-app by `manifest.id`. A package with the same ID updates an existing app only when its version is newer; public `storage.json` is retained. Invalid packages do not replace the active app. Sharing exports either a self-contained HTML file or a ZIP of application code; private and secure storage are never exported.
+
+## Launcher interfaces
+
+Launcher interfaces are editable HTML/CSS/JavaScript packages. The active interface is selected in the launcher settings. Each interface contains `index.html` and may include `appbar.js` and `appbar.css` to configure a mini-app top bar. On Windows, the installer packages the interface and built-in mini-app directories from `DefaultContent/`; additional user interfaces and mini-apps survive installer updates.
+
+## Repository layout
+
+| Path | Purpose |
+| --- | --- |
+| `Code/Android/app/` | Kotlin Android host |
+| `Code/Windows/` | .NET 8 WinForms and WebView2 host |
+| `Code/Framework/shared/` | JavaScript bridges shared by both hosts |
+| `DefaultContent/` | Built-in mini-apps and interfaces packaged for Windows |
+| `Build/` | Build configuration, scripts, and platform packaging files |
+| `Cache/` | Re-creatable local build outputs and caches |
+| `Output/` | Final distribution artifacts |
+
+
+# Runtime API v2
+
+Runtime version is `1.4.0`; SDK version 2 is supported. All methods return `Promise` and reject with an object carrying a stable `code`.
+
+## Navigation
+
+`mini.events.on('navigation.backRequested', handler)` receives `{ handled() }`. Android system Back/gesture, Windows Escape, native top-bar Back and appbar Back share this route. The host performs the default action after 350 ms when no handler marks the event handled; repeated requests are coalesced. Interception is enabled by default and can be changed with `mini.navigation.setBackEnabled(boolean)`. `mini.navigation.getState()` returns `{ backEnabled }`.
+
+## Capabilities
+
+`mini.runtime.getCapabilities()` returns `runtimeVersion`, `sdkVersion`, `platform`, methods, feature flags and limits. `mini.runtime.supports(name)` accepts a method, feature or event name. Mini-app manifests may declare `minRuntimeVersion` as SemVer. Installation remains possible, but launch is blocked with `runtime_version_too_old` when the runtime is older.
+
+Both `version` and `minRuntimeVersion` use SemVer (`major.minor.patch`, optional prerelease and build metadata). The runtime compares numeric prerelease identifiers according to SemVer rather than using lexical string comparison.
+
+## Application information
+
+`mini.app.getAppInfo()` returns all available manifest fields of the current mini-app, plus ISO-8601 `installedAt` and `updatedAt` timestamps. `appSizeBytes` excludes persistent data; `dataSizeBytes` includes public, private, and secure runtime storage. The separate `publicDataSizeBytes`, `privateDataSizeBytes`, and `secureDataSizeBytes` fields provide a size breakdown.
+
+## Storage
+
+Both `mini.storage.private` and `mini.storage.public` provide `getMany`, `setMany`, `getSchemaVersion`, `setSchemaVersion`, and `getUsage`. Schema version starts at 0. Use `mini.storage.transaction({ scope, operations })` for an atomic set/remove/clear/schema update; callback transactions are intentionally unsupported. Public data is written to a flushed temporary file, then atomically replaced; `storage.json.bak` is used for recovery. Corrupt primary and backup data return `storage_corrupted` without silently clearing data.
+
+## Permissions and secrets
+
+`mini.permissions.query`, `request`, and `openSettings` use `granted`, `denied`, `prompt`, `not_declared`, and `unsupported`. A permission must be declared in the manifest. `permissions.changed` is emitted only to the requesting app. `secureStorage` requires the manifest permission of the same name and exposes `get`, `set`, `remove`, `keys`, and `clear`. Android encrypts it with an Android Keystore key; Windows uses user-scoped DPAPI. It is keyed by manifest ID, is not public storage, is not shared, and is not in ordinary backups.
+
+## Events and errors
+
+Events: `navigation.backRequested`, `permissions.changed`, `network.statusChanged`, `app.launchParamsChanged`, `storage.restored`, `app.updated`, `app.rolledBack`. Stable system errors include `feature_unavailable`, `user_gesture_required`, `network_unavailable`, `network_permission_denied`, `network_url_not_allowed`, `network_invalid_url`, `network_timeout`, `network_request_failed`, `network_request_too_large`, `network_response_too_large`, `network_redirect_blocked`, `network_tls_failed`, `notification_permission_denied`, `notification_payload_too_large`, `directory_not_found`, `file_not_found`, `file_too_large`, `file_exists`, `system_url_not_allowed`, and `system_no_handler`.
+
+## System APIs (stage 2)
+
+New manifest permissions are `network`, `notifications`, `clipboard.read`, `files.directory`, `system.open`, and `haptics`. They use the existing `mini.permissions.query()` and `mini.permissions.request()` flow and begin in `prompt` after an update. Native alert, confirm, prompt and toast require no permission.
+
+`mini.network.request(options)` is the controlled HTTP API. It requires `network` and a `network.allow` manifest list containing exact HTTPS origins or `*.example.com` subdomain patterns. HTTPS is the default; HTTP, local network addresses, and subdomains of a non-wildcard allowlist entry need their explicit manifest flags. Every redirect is checked again. The request limit is 10 MiB, response limit is 20 MiB, default timeout is 30 seconds, and at most five redirects are followed. Browser `fetch` remains unchanged and is **not** governed by this allowlist.
+
+`mini.network.getStatus()` returns only `{ online, type, metered }`; it never exposes network names, addresses, or hardware identifiers. Android and Windows provide the controlled request API and status. Both emit `network.statusChanged` only when this normalized state changes and unregister their system listener when the mini-app closes. Windows currently reports `type: "unknown"` and `metered: false` because the WinForms host does not expose a stable richer classification.
+
+File handles remain opaque and scoped to one mini-app. Both hosts support `files.pickMultiple`, `files.getInfo`, `files.readChunk`, `files.readTextChunk`, and `files.releaseMany`; chunks are bounded to 1 MiB. Both hosts also support user-selected directory handles: `pickDirectory`, `listDirectory`, `openInDirectory`, `createInDirectory`, `writeChunk`, `flush`, `persistDirectory`, `restoreDirectory`, and `forgetDirectory`. Directory paths must be relative and cannot contain traversal segments. The legacy whole-file methods retain their existing 5 MiB guard.
+
+Windows supports the same directory-handle methods. A persisted directory stores its host path privately under the user's runtime data; JavaScript receives only a new opaque directory ID after restoration. Chunk writes append at most 1 MiB and flush synchronously before resolving.
+
+Android supports `mini.notifications.requestPermission`, `schedule`, `cancel`, `get`, `list`, and `cancelAll`. `requestPermission` uses Android's `POST_NOTIFICATIONS` prompt on Android 13+. Records are private to the manifest ID and retained after the mini-app runtime closes. Supported schedules are one-time ISO-8601 `at` timestamps, daily/weekly local-time schedules, and `interval` schedules from 15 minutes to seven days. Records are re-armed after device boot. Android alarm delivery is best-effort and system power policies can delay it. Windows notifications remain feature-unavailable.
+
+`clipboard.readText()` requires `clipboard.read`; it returns text or `null`. `ui.alert`, `ui.confirm`, `ui.prompt`, and `ui.toast` use native UI. `haptics.*` requires `haptics` and is supported on Android only. `system.canOpenUrl`, `openUrl`, `openFile`, and `openSettings` require `system.open`; URL opening is delegated to the operating system and permits only `https`, `http`, `mailto`, `tel`, and (Android) `geo`.
+
+Use `mini.runtime.getCapabilities()` or `mini.runtime.supports(name)` before optional APIs. Calls for an unavailable feature reject with a stable error rather than silently succeeding.
+
+File pickers, clipboard reads, permission prompts, and external opening require a recent native user gesture on Android and Windows. Calls made outside that window reject with `user_gesture_required`.
+
+`mini.app.getLaunchParams()` returns the current launch context. Android returns `{ reason: "notification", notificationId, payload }` after a notification tap and emits `app.launchParamsChanged` for a running activity. Payload is JSON-only, limited to 16 KiB, and host-owned. Windows currently returns `{ reason: "normal" }` because Windows notification activation is not implemented.
+
+## Platform availability
+
+| Capability | Android | Windows |
+| --- | --- | --- |
+| Controlled `network.request` and `network.statusChanged` | Available | Available; status type is `unknown` |
+| Persistent notifications | Available: once, daily, weekly, interval | Unavailable |
+| File and directory handles | Available | Available |
+| Clipboard read, dialogs, toast, system open | Available | Available |
+| Haptics | Available | Unavailable |
+| Notification launch parameters | Available | Unavailable |
+
+Always use `mini.runtime.supports(name)` or `getCapabilities()` instead of relying on this table.
+
+`app.updated`, `app.rolledBack`, and `storage.restored` are reserved lifecycle events: applications should feature-detect them until the launcher emits them on both platforms.
+
+
+# Security model
+
+Mini-app JavaScript never receives filesystem paths. The native host validates bridge parameters, manifest-relative paths and ZIP entries; traversal/Zip Slip paths are rejected. Storage and permissions are isolated by stable manifest ID.
+
+Public storage is portable `storage.json`; private storage is local to the host; secure storage is separately encrypted and excluded from sharing and backup. A new manifest permission is left at `prompt`; removed permissions have their stored decision removed. Permission grants are never transferred to another app ID.
+
+Install/update uses staging, validation, source preservation, atomic directory replacement, and one rollback copy outside the scanned app tree. Public storage is retained across update. A failed transition restores the previous active directory. Rollback metadata format is `miniapps-rollback`, version 1.
+
+On Windows, rollback state is kept under `MiniApps/.runtime/rollback/<appId>/`; staging is under `MiniApps/.runtime/staging/`. These directories are excluded from the app scan. At most one previous source and application directory are retained. Rolling back swaps only application source directories: public, private, and secure user data stay at their current values.
+
+The controlled network API is separate from browser `fetch`. Its manifest allowlist accepts explicit origins and leading subdomain wildcards only; credentials in URLs, unsafe schemes, HTTP unless opted in, and local addresses unless explicitly opted in are rejected. Redirects are checked against the same policy, cookies are not persisted by the runtime, and request/response sizes are bounded. The Android and Windows transports run outside the UI thread. Network status deliberately contains no SSID, IP, carrier, or device identifier.
+
+File IDs are capabilities, not paths. They are opaque, app-scoped, and invalid after release or runtime destruction. System opening receives only an opaque handle or a validated URL; no filesystem path is returned to JavaScript. Clipboard reads need a separate permission. Platform dialogs render supplied strings as text rather than HTML.
+
+Android records the last native WebView touch and requires it to be recent (one second) before permission prompts, file and directory pickers, clipboard reads, and system opening. This check is host-side; a mini-app cannot satisfy it by adding a bridge parameter.
+
+Windows applies the same one-second host-side check from native WebView mouse or keyboard input before permission prompts, file pickers, clipboard reads, and system opening.
+
+Android notification records are scoped to the manifest ID. Their payload is JSON-only and bounded to 16 KiB; a notification tap constructs host-owned launch parameters for that same app. Removing an app cancels its alarms and clears its records and persisted directory grants. Windows does not expose notification scheduling or activation.
+
+
+# Windows launcher
+
+The concise distribution reference is also available at [`docs/windows-distribution.md`](../docs/windows-distribution.md).
+
+The Windows application is a small .NET/WinForms shell around the system Microsoft Edge WebView2 Runtime. It does not ship Chromium.
+
+Build a compact framework-dependent executable:
+
+```powershell
+.\build\Windows\publish-windows.ps1
+```
+
+The distributable keeps `MiniApps.exe`, `MiniApps`, `Interface`, and `Config` directly in `Output/Windows`. `Data/WebView2` contains the WebView2 loader and its XML documentation files; the WebView2 profile is stored in `Data/WebView2/UserData`. Window sizes, the selected launcher interface, and mini-app permissions are stored in `Config`; permission files use mini-app names. Private and secure mini-app storage remains in `Data/User`, while public storage remains inside the mini-app directory as `storage.json`.
+
+## Offline Windows installer
+
+Create `Output/Windows/MiniAppsSetup.exe` with:
+
+```powershell
+.\build\Windows\publish-installer.ps1
+```
+
+The setup defaults to `%LOCALAPPDATA%\MiniApps` and lets the user choose another writable program folder. If the chosen folder does not already end in `MiniApps`, the installer appends that final folder name. Mini-apps, launcher interfaces, settings, private and secure storage, and WebView2 profile data all remain in that folder. Running a newer setup replaces program files while preserving those user-owned folders. The installer writes `unins000.exe` and `unins000.dat` into `Data`. It accepts .NET Desktop Runtime 8 or newer, checking system and user locations, `DOTNET_ROOT`, the registry, and `dotnet --list-runtimes`; it opens the official download page only when none of those checks finds a compatible runtime. The application uses the standard installed Microsoft Edge WebView2 Runtime; Windows 11 includes it, while a small number of Windows 10 devices can require a separate WebView2 Runtime installation. Building the setup requires Inno Setup 6 (`iscc.exe`).
+
+When an update includes a built-in mini-app, its code files and manifest are refreshed. The installer preserves that app's `storage.json`, `.runtime`, and mini-app folders that are not part of the shipped package. Imported ZIP and HTML packages are installed directly and are not retained as source copies.
+
+The launcher UI is loaded from `Interface/<name>/index.html`. Interfaces packaged with the application come from `DefaultContent/Interface`, where each interface is a separate subfolder (for example, `DefaultContent/Interface/default`). Custom HTML, ZIP, and folder interfaces can be selected in the launcher settings.
+
+The native launcher exposes `launcher.list()`, `launcher.getAppInfo(id)`, `launcher.open(id)`, `launcher.openNewWindow(id)`, `launcher.refresh()`, `launcher.importApp()`, `launcher.deleteApp(id)`, `launcher.shareApp(id)`, `launcher.shareAppData(id)`, `launcher.getSettingsInfo()`, `launcher.listInterfaces()`, `launcher.selectInterface(id)`, `launcher.importInterface()`, `launcher.getInterfaceSettings()`, and `launcher.setInterfaceSettings(settings)` to this interface. `shareApp(id)` creates a standalone HTML when the installed app is already a self-contained HTML with an embedded manifest; otherwise it creates a ZIP of its code. It excludes all user data, including `storage.json`. `shareAppData(id)` exports only that app's public `storage.json`; private and secure storage remain excluded. `getInterfaceSettings()` reads the active interface's `Interface/<id>/settings.json` and returns `{}` for a missing or malformed file. `setInterfaceSettings()` accepts a JSON object only, limits its UTF-8 serialization to 64 KiB, and atomically replaces that file; the host derives the active interface path itself. `launcher.getAppInfo(id)` returns the app manifest, installation and update timestamps, and application/data size breakdown. Windows share actions copy their text/file payload to the clipboard.
+
+Trusted launcher interfaces can also call `launcher.getRollbackInfo(id)`, `launcher.rollbackApp(id)`, and `launcher.deleteRollback(id)`. An update retains one previous app directory and source under `MiniApps/.runtime/rollback/<appId>`. Rollback swaps source versions but deliberately does not roll back public, private, or secure data. `launcher.getAppPermissions(id)`, `launcher.setAppPermission(id, permission, state)`, and `launcher.resetAppPermissions(id)` manage manifest-declared permission decisions. These management methods are never available to mini-app JavaScript.
+
+Backup APIs are reserved in the shared launcher contract, but native backup/restore file dialogs and restore execution are not implemented yet. Feature-detect `backup.restore` before presenting it in an interface.
+
+## Stage 2 system APIs
+
+Windows supports controlled `mini.network.request`, network status events, multiple-file and directory handles, clipboard read, native dialogs/toast, and validated external URL/file/settings opening. Network requests are allowlist-controlled and cookie-free. Directory paths are never returned to JavaScript; persisted directory paths remain in local runtime data.
+
+Windows haptics and persistent notification scheduling/activation are unavailable and are reported as such by `mini.runtime.getCapabilities()`.
+
+## Windows window controls
+
+- Click an app card to open it in the main window.
+- Right-click an app card for the launcher context menu, including **Open** and **Open in new window**.
+- Middle-click an app card to open it in a new window.
+- The main-window app view has a **← Back** button that returns to the launcher.
+- If at least one additional app window is open, closing the main window hides it in the notification area instead of exiting. Double-click the tray icon, or select **Open**, to restore it. Select **Exit** in the tray menu to exit explicitly.
+
+## Native top bar API
+
+## Windows taskbar title
+
+Use `await mini.app.setWindowTitle('My mini-app')` to set the title of the active mini-app window. Windows displays this title in the taskbar, Alt+Tab, and the window caption. The launcher restores its own title when the mini-app is closed.
+
+Each mini-app receives a native top bar. An interface-specific configuration can be placed in `Interface/<name>/appbar.js`; it calls `mini.ui.setTopBar(config)` after the page loads. The Windows host draws the bar and reserves its height above the WebView, so page content never overlaps it.
+
+`config` supports `visible`, `height` (40–120 px), `paddingX`, `paddingY`, `titleFontSize`, `title`, `background`, `foreground`, `accent`, `showBack`, `backText`, `backButton`, and up to four `actions`. Colors use `#RRGGBB`. An action has `id`, `label`, and optional `accent`; handle its click in the mini-app with `mini.events.on('ui.topBarAction', handler)`.
+
+The `backButton` object keeps the complete appearance of the back button in the interface layer: `radius` (0–48 px), `paddingX` (4–48 px), `background`, `hoverBackground`, `foreground`, `border`, `borderOpacity` (0–255), and `fontSize` (7–20). The Windows host renders these settings with its own lightweight control, rather than a system `Button`, so rounded corners do not leave a rectangular or black background.
+
+
+# Windows distribution
+
+## Build
+
+Run these commands from the project root:
+
+```bat
+build\Scripts\BuildWindows.cmd
+build\Scripts\BuildAndroid.cmd
+build\Scripts\BuildAll.cmd
+```
+
+`BuildWindows.cmd` creates `Output/Windows/MiniAppsSetup.exe`. `BuildAndroid.cmd` creates the release APK at `Output/Android/MiniApps.apk`. `BuildAll.cmd` runs both scripts; none of these scripts creates an Android debug APK.
+
+Android uses the committed Gradle Wrapper in `build/Android`, which downloads Gradle 8.14 on its first run. Windows restores NuGet packages automatically when its cache is absent. The first build therefore needs internet access.
+
+Before building, the scripts check their prerequisites: Android requires JDK 17+, Android SDK Platform 35, and the committed Wrapper; Windows requires .NET SDK 8+ and Inno Setup 6+.
+
+The `build` directory stores the build configurations and scripts. Re-creatable intermediates are written to `Cache` and may be deleted; final distributables remain in `Output`.
+
+## Installed layout
+
+The Windows installer lets the user choose a writable folder. If its path does not already contain `MiniApps` as a folder name, the installer adds the final `MiniApps` folder.
+
+```text
+MiniApps/
+|- MiniApps.exe
+|- MiniApps/                 default mini-app packages and installed mini-apps
+|- Interface/                launcher interfaces
+|  `- default/
+|     `- index.html
+`- Data/                     runtime files and all private application state
+   |- WebView2/              WebView2 loader and managed-library XML documentation
+   |  `- UserData/           WebView2 profile
+   `- User/                  private and secure mini-app storage
+`- Config/                   launcher configuration
+   |- window-sizes.json
+   |- launcher-interface.txt
+   `- Permissions/           permission files named after mini-apps
+```
+
+The uninstaller files `unins000.exe` and `unins000.dat` are stored in `Data`.
+
+## Packaged content and offline updates
+
+The installer is fully offline: it updates the selected installation using only files inside `MiniAppsSetup.exe`.
+
+- `DefaultContent/MiniApps` and `DefaultContent/Interface` are copied into one self-contained Windows publish result as `MiniApps` and `Interface`; Inno Setup builds the installer from that same result without a second publish. Before Inno Setup runs, the build verifies that the executable, the default interface, and at least one mini-app manifest are present.
+- An update refreshes built-in mini-app code and manifests while preserving `storage.json`; user-added mini-app folders and `.runtime` are kept. Each bundled interface subdirectory needs an `index.html`; `DefaultContent/Interface/default/index.html` is the bundled default. Packaged interface files are refreshed during an update, while additional custom interface folders are not removed.
+- Runtime binaries and libraries are refreshed in `Data`; `Data/User` and `Data/WebView2/UserData` are preserved. `Config` is also preserved, including window size, selected interface, and mini-app permission settings. Imported ZIP and HTML packages are installed directly and are not retained as source copies.
+
+## Dependencies
+
+The installer does not bundle .NET or WebView2. It accepts any installed x64 .NET Desktop Runtime with major version 8 or higher and offers the official download page only if none is found. The app uses the system Microsoft Edge WebView2 Runtime.
+
+## Versioning
+
+`build/version.properties` is the single source of truth: `APP_VERSION` is used by Android and the Windows installer, while `ANDROID_VERSION_CODE` is used by Android.

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Mini Paint</title>
+<style>
+:root{--bg:#202124;--panel:#292a2d;--panel2:#303136;--border:#45464b;--text:#f1f3f4;--muted:#aeb1b8;--accent:#4f8cff}
+*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font:14px Segoe UI,Arial,sans-serif}
+body{display:flex;flex-direction:column}
+#toolbar{height:58px;display:flex;align-items:center;gap:7px;padding:8px 10px;background:var(--panel);border-bottom:1px solid var(--border);flex-wrap:nowrap}
+button,.tool,select,input{font:inherit}
+button,.tool{height:36px;border:1px solid var(--border);background:var(--panel2);color:var(--text);border-radius:7px;padding:0 11px;cursor:pointer}
+button:hover,.tool:hover{background:#3a3b40}.tool.active{background:var(--accent);border-color:#75a4ff}
+button:disabled{opacity:.45;cursor:default}
+.sep{width:1px;height:30px;background:var(--border);margin:0 3px}
+#workspace{flex:1;min-height:0;display:flex;overflow:hidden}
+#side{width:190px;background:var(--panel);border-right:1px solid var(--border);padding:10px;display:flex;flex-direction:column;gap:12px}
+.group{border-bottom:1px solid var(--border);padding-bottom:12px}.group:last-child{border:0}
+.group-title{font-size:11px;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.tools{display:grid;grid-template-columns:1fr 1fr;gap:6px}.tools .tool{padding:0 4px}
+label{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:7px 0;color:var(--muted)}
+input[type=color]{width:45px;height:30px;padding:2px;border:1px solid var(--border);background:var(--panel2);border-radius:5px}
+input[type=range]{width:95px}
+input[type=number]{width:75px;background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:5px}
+#canvasArea{flex:1;min-width:0;min-height:0;position:relative;overflow:auto;background:#151619}
+#canvasWrap{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);box-shadow:0 5px 30px #0008;background:white}
+canvas{display:block;touch-action:none}
+#status{height:25px;padding:4px 10px;background:var(--panel);border-top:1px solid var(--border);color:var(--muted);font-size:12px}
+#fileInput{display:none}
+#newDialog{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center}
+.dialog{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px;width:310px;box-shadow:0 15px 50px #000b}
+.dialog h3{margin:0 0 14px}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+#selectionBox{position:absolute;border:1px dashed #2276ff;display:none;pointer-events:none}
+@media(max-width:800px){#side{width:145px}#toolbar{overflow-x:auto}.toolbar-label{display:none}}
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <button id="newBtn">New</button>
+  <button id="openBtn">Open image</button>
+  <button id="saveBtn">Save PNG</button>
+  <div class="sep"></div>
+  <button id="undoBtn" disabled>↶</button>
+  <button id="redoBtn" disabled>↷</button>
+  <div class="sep"></div>
+  <button id="clearBtn">Clear</button>
+</div>
+
+<div id="workspace">
+<aside id="side">
+  <div class="group">
+    <div class="group-title">Tools</div>
+    <div class="tools">
+      <button class="tool active" data-tool="brush">Brush</button>
+      <button class="tool" data-tool="eraser">Eraser</button>
+      <button class="tool" data-tool="line">Line</button>
+      <button class="tool" data-tool="rect">Rectangle</button>
+      <button class="tool" data-tool="ellipse">Ellipse</button>
+      <button class="tool" data-tool="text">Text</button>
+      <button class="tool" data-tool="select">Selection</button>
+      <button class="tool" data-tool="fill">Fill</button>
+    </div>
+  </div>
+  <div class="group">
+    <div class="group-title">Settings</div>
+    <label>Color <input id="color" type="color" value="#111111"></label>
+    <label>Size <input id="size" type="range" min="1" max="100" value="5"></label>
+    <label>Width <input id="width" type="number" min="1" max="5000" value="1200"></label>
+    <label>Height <input id="height" type="number" min="1" max="5000" value="800"></label>
+  </div>
+  <div class="group">
+    <div class="group-title">Image</div>
+    <button id="fitBtn" style="width:100%">Fit to window</button>
+    <button id="actualBtn" style="width:100%;margin-top:6px">100% zoom</button>
+  </div>
+</aside>
+
+<main id="canvasArea">
+  <div id="canvasWrap"><canvas id="canvas" width="1200" height="800"></canvas></div>
+</main>
+</div>
+<div id="status">Ready · 1200 × 800</div>
+<input id="fileInput" type="file" accept="image/*">
+
+<div id="newDialog">
+  <div class="dialog">
+    <h3>New image</h3>
+    <label>Width <input id="newWidth" type="number" min="1" max="5000" value="1200"></label>
+    <label>Height <input id="newHeight" type="number" min="1" max="5000" value="800"></label>
+    <div class="dialog-actions"><button id="cancelNew">Cancel</button><button id="createNew">Create</button></div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d', {willReadFrequently:true});
+const wrap = document.getElementById('canvasWrap');
+const area = document.getElementById('canvasArea');
+const status = document.getElementById('status');
+const color = document.getElementById('color');
+const size = document.getElementById('size');
+let tool = 'brush', drawing = false, start = null, snapshot = null;
+let undoStack = [], redoStack = [];
+let scale = 1;
+let selection = null;
+
+function setStatus(t){status.textContent=t}
+function updateStatus(){setStatus(`${tool} · ${canvas.width} × ${canvas.height} · zoom ${Math.round(scale*100)}%`)}
+function pushUndo(){
+  undoStack.push(ctx.getImageData(0,0,canvas.width,canvas.height));
+  if(undoStack.length>30) undoStack.shift();
+  redoStack=[];
+  undoBtn.disabled=false; redoBtn.disabled=true;
+}
+function restore(img){ctx.putImageData(img,0,0); updateStatus()}
+function resizeCanvas(w,h,keep=false){
+  const old = document.createElement('canvas'); old.width=canvas.width; old.height=canvas.height;
+  old.getContext('2d').drawImage(canvas,0,0);
+  canvas.width=w; canvas.height=h;
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,w,h);
+  if(keep) ctx.drawImage(old,0,0);
+  scale=1; applyScale(); updateStatus();
+}
+function applyScale(){
+  wrap.style.width=(canvas.width*scale)+'px'; wrap.style.height=(canvas.height*scale)+'px';
+  canvas.style.width=(canvas.width*scale)+'px'; canvas.style.height=(canvas.height*scale)+'px';
+}
+function fit(){
+  const pad=50, sx=(area.clientWidth-pad)/canvas.width, sy=(area.clientHeight-pad)/canvas.height;
+  scale=Math.max(.05,Math.min(1,sx,sy)); applyScale(); updateStatus();
+}
+function point(e){
+  const r=canvas.getBoundingClientRect();
+  return {x:(e.clientX-r.left)*canvas.width/r.width,y:(e.clientY-r.top)*canvas.height/r.height};
+}
+function setupStyle(){
+  ctx.lineWidth=+size.value; ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.strokeStyle=color.value; ctx.fillStyle=color.value;
+}
+function drawShape(p){
+  ctx.putImageData(snapshot,0,0); setupStyle();
+  const x=Math.min(start.x,p.x), y=Math.min(start.y,p.y), w=Math.abs(p.x-start.x), h=Math.abs(p.y-start.y);
+  if(tool==='line'){ctx.beginPath();ctx.moveTo(start.x,start.y);ctx.lineTo(p.x,p.y);ctx.stroke()}
+  if(tool==='rect'){ctx.strokeRect(x,y,w,h)}
+  if(tool==='ellipse'){ctx.beginPath();ctx.ellipse(x+w/2,y+h/2,w/2,h/2,0,0,Math.PI*2);ctx.stroke()}
+}
+function floodFill(x,y){
+  const img=ctx.getImageData(0,0,canvas.width,canvas.height), d=img.data;
+  const ix=Math.floor(x), iy=Math.floor(y), pos=(iy*canvas.width+ix)*4;
+  const target=[d[pos],d[pos+1],d[pos+2],d[pos+3]];
+  const c=color.value.match(/[0-9a-f]{2}/gi).map(v=>parseInt(v,16)); c.push(255);
+  if(target.every((v,i)=>v===c[i])) return;
+  const stack=[[ix,iy]], seen=new Uint8Array(canvas.width*canvas.height);
+  while(stack.length){
+    const [px,py]=stack.pop(); if(px<0||py<0||px>=canvas.width||py>=canvas.height)continue;
+    const k=py*canvas.width+px; if(seen[k])continue; seen[k]=1;
+    const p=k*4; if(Math.abs(d[p]-target[0])+Math.abs(d[p+1]-target[1])+Math.abs(d[p+2]-target[2])+Math.abs(d[p+3]-target[3])>0)continue;
+    d[p]=c[0];d[p+1]=c[1];d[p+2]=c[2];d[p+3]=255;
+    stack.push([px+1,py],[px-1,py],[px,py+1],[px,py-1]);
+  }
+  ctx.putImageData(img,0,0);
+}
+function textAt(p){
+  const text=prompt('Enter text:'); if(!text)return;
+  pushUndo(); setupStyle(); ctx.font=`${Math.max(12,+size.value*4)}px Segoe UI, Arial`; ctx.fillText(text,p.x,p.y);
+}
+function begin(e){
+  if(e.button!==undefined && e.button!==0)return;
+  const p=point(e); drawing=true; start=p; snapshot=ctx.getImageData(0,0,canvas.width,canvas.height);
+  if(tool==='text'){drawing=false;textAt(p);return}
+  if(tool==='fill'){drawing=false;pushUndo();floodFill(p.x,p.y);return}
+  if(tool==='select'){drawing=false;selection={x:p.x,y:p.y,w:0,h:0};return}
+  pushUndo(); setupStyle();
+  if(tool==='eraser'){ctx.globalCompositeOperation='destination-out'}
+  if(tool==='brush'||tool==='eraser'){ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+.01,p.y+.01);ctx.stroke()}
+}
+function move(e){
+  if(!drawing)return; const p=point(e);
+  if(tool==='brush'||tool==='eraser'){setupStyle();ctx.lineTo(p.x,p.y);ctx.stroke()}
+  else drawShape(p);
+}
+function end(e){if(!drawing)return; drawing=false;ctx.globalCompositeOperation='source-over';updateStatus()}
+canvas.addEventListener('pointerdown',begin); canvas.addEventListener('pointermove',move);
+window.addEventListener('pointerup',end);
+
+document.querySelectorAll('.tool').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tool').forEach(x=>x.classList.remove('active')); b.classList.add('active'); tool=b.dataset.tool; updateStatus();
+});
+size.oninput=updateStatus;
+color.oninput=()=>{};
+document.getElementById('newBtn').onclick=()=>document.getElementById('newDialog').style.display='flex';
+document.getElementById('cancelNew').onclick=()=>document.getElementById('newDialog').style.display='none';
+document.getElementById('createNew').onclick=()=>{
+  const w=+document.getElementById('newWidth').value,h=+document.getElementById('newHeight').value;
+  resizeCanvas(w,h,false); undoStack=[];redoStack=[];undoBtn.disabled=true;redoBtn.disabled=true;
+  document.getElementById('newDialog').style.display='none';
+};
+document.getElementById('clearBtn').onclick=()=>{pushUndo();ctx.globalCompositeOperation='source-over';ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);updateStatus()};
+document.getElementById('undoBtn').onclick=()=>{if(!undoStack.length)return;redoStack.push(ctx.getImageData(0,0,canvas.width,canvas.height));restore(undoStack.pop());undoBtn.disabled=!undoStack.length;redoBtn.disabled=false};
+document.getElementById('redoBtn').onclick=()=>{if(!redoStack.length)return;undoStack.push(ctx.getImageData(0,0,canvas.width,canvas.height));restore(redoStack.pop());redoBtn.disabled=!redoStack.length;undoBtn.disabled=false};
+document.getElementById('fitBtn').onclick=fit;
+document.getElementById('actualBtn').onclick=()=>{scale=1;applyScale();updateStatus()};
+document.getElementById('openBtn').onclick=async()=>{
+  try{
+    const f=await mini.files.pick({mimeTypes:['image/png','image/jpeg','image/webp','image/gif','image/bmp']});
+    const b64=await mini.files.readBase64(f.id); await mini.files.release(f.id);
+    const img=new Image(); img.onload=()=>{pushUndo();resizeCanvas(img.naturalWidth,img.naturalHeight,false);ctx.drawImage(img,0,0);fit()}; img.src='data:image/*;base64,'+b64;
+  }catch(e){setStatus('Opening was cancelled or failed')}
+};
+document.getElementById('saveBtn').onclick=async()=>{
+  try{
+    const data=canvas.toDataURL('image/png').split(',')[1];
+    await mini.files.saveBase64({fileName:'image.png',mimeType:'image/png',base64:data});
+    setStatus('Image saved');
+  }catch(e){setStatus('Saving was cancelled or failed')}
+};
+window.addEventListener('resize',()=>{if(scale<1)fit()});
+applyScale(); updateStatus();
+</script>
+</body>
+</html>

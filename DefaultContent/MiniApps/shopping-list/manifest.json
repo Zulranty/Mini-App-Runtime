@@ -1,0 +1,13 @@
+{
+  "id": "com.sempai.shoppinglist",
+  "name": "Shopping List",
+  "version": "2.0.0",
+  "sdkVersion": 1,
+  "entry": "index.html",
+  "description": "A local shopping list with categories, editing, themes, and reliable storage",
+  "author": "Sempai",
+  "icon": "assets/icon.png",
+  "permissions": [
+    "storage"
+  ]
+}

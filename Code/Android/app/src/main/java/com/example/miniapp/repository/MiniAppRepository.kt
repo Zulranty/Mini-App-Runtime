@@ -1,0 +1,17 @@
+package com.example.miniapp.repository
+import android.content.Context
+import com.example.miniapp.model.*
+import com.example.miniapp.services.MiniNotificationService
+import com.example.miniapp.services.AppInfoService
+import java.io.File
+class MiniAppRepository(private val context:Context){
+ private val root get()=SharedMiniAppStore.ensureRoot()
+ fun sync(){if(SharedMiniAppStore.hasFileAccess())SharedMiniAppStore.syncZips(context)}
+ fun list()=SharedMiniAppStore.appDirs().mapNotNull{SharedMiniAppStore.readManifest(it)?.let(::InstalledMiniApp)}.sortedBy{it.manifest.name.lowercase()}
+ fun get(id:String)=list().firstOrNull{it.manifest.id==id}
+ fun dir(id:String)=SharedMiniAppStore.findDirById(id)?:File(root,SharedMiniAppStore.folderForId(id))
+ fun rollbackInfo(id:String):org.json.JSONObject { val data=File(root,".runtime/rollback/$id/rollback.json");return if(data.isFile) runCatching{org.json.JSONObject(data.readText()).put("available",true)}.getOrElse{org.json.JSONObject().put("available",false)} else org.json.JSONObject().put("available",false) }
+ fun deleteRollback(id:String){File(root,".runtime/rollback/$id").deleteRecursively()}
+ fun rollback(id:String){synchronized(SharedMiniAppStore.installLock){val current=dir(id);val slot=File(root,".runtime/rollback/$id");val previous=File(slot,"app");if(!previous.isDirectory)throw IllegalStateException("rollback_not_available");val previousManifest=SharedMiniAppStore.readManifest(previous)?:throw IllegalStateException("rollback_failed");if(previousManifest.id!=id)throw IllegalStateException("rollback_failed");val staging=File(root,".runtime/staging/rollback-${System.nanoTime()}");staging.parentFile?.mkdirs();if(!current.renameTo(staging))throw IllegalStateException("rollback_failed");try{if(!previous.renameTo(current))throw IllegalStateException("rollback_failed");if(!staging.renameTo(previous))throw IllegalStateException("rollback_failed");val metadata=org.json.JSONObject().put("format","miniapps-rollback").put("formatVersion",1).put("appId",id).put("currentVersion",SharedMiniAppStore.readManifest(current)?.version).put("previousVersion",SharedMiniAppStore.readManifest(previous)?.version).put("createdAt",java.time.Instant.now().toString());File(slot,"rollback.json").writeText(metadata.toString())}catch(e:Exception){if(!current.exists()&&staging.exists())staging.renameTo(current);throw e}}}
+ fun delete(id:String, @Suppress("UNUSED_PARAMETER") data:Boolean=true){synchronized(SharedMiniAppStore.installLock){val failures=mutableListOf<String>();AppInfoService.clear(context,id);MiniNotificationService(context,id).cancelAll();context.getSharedPreferences("notifications.$id",Context.MODE_PRIVATE).edit().clear().commit();context.getSharedPreferences("notification.apps",Context.MODE_PRIVATE).edit().remove(id).commit();context.getSharedPreferences("directories.$id",Context.MODE_PRIVATE).edit().clear().commit();val app=dir(id);if(app.exists()&&!app.deleteRecursively())failures+="application";deleteRollback(id);val private=File(context.filesDir,"mini-private/$id");if(private.exists()&&!private.deleteRecursively())failures+="private storage";context.getSharedPreferences("mini.$id",Context.MODE_PRIVATE).edit().clear().commit();context.getSharedPreferences("permissions.$id",Context.MODE_PRIVATE).edit().clear().commit();if(failures.isNotEmpty())throw IllegalStateException("Could not delete: ${failures.joinToString()}")}}
+}

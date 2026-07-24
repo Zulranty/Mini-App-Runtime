@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Worktime Tracker</title>
+  <script type="application/miniapp+json">
+  {"id":"ru.htmlframework.worktime","name":"Worktime Tracker","version":"1.1.2","sdkVersion":1,"description":"Track work sessions, daily rates, and earnings with precise recalculation","author":"HTML Framework","permissions":["storage","files.pick","clipboard.write"]}
+  </script>
+  <style>
+    :root{color-scheme:dark;--bg:#0f1115;--panel:#161a22;--line:#263042;--text:#e6e6ea;--muted:#9aa4b2;--blue:#6ee7ff;--green:#8cff9b;--red:#ff8b8b}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font:500 15px/1.4 system-ui,sans-serif}
+    .app{max-width:1100px;margin:auto;padding:18px}
+    .card{background:var(--panel);border:1px solid #232a35;border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 10px 30px #0004}
+    h1,h2{margin:0 0 8px}h1{font-size:27px}
+    .timer{font-size:48px;font-weight:900;letter-spacing:1px;text-align:center;padding:12px;border:1px solid var(--line);border-radius:14px;background:#10151d;font-variant-numeric:tabular-nums}
+    .row{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:12px}
+    .grow{flex:1}
+    .rateLabel{display:flex;gap:8px;align-items:center;white-space:nowrap}
+    .rateInput{width:150px;text-align:right;font-variant-numeric:tabular-nums}
+    .kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+    .kpi>div{padding:11px;border:1px solid var(--line);background:#101722;border-radius:12px;min-width:0}
+    .kpi>div>span{display:block;color:var(--muted);font-size:12px}
+    .kpiValues{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:2px}
+    .kpiValues>b{font-size:19px;font-variant-numeric:tabular-nums}
+    .moneyValue{display:flex;gap:5px;align-items:baseline;color:var(--green);white-space:nowrap;font-variant-numeric:tabular-nums}
+    .moneyValue small{color:var(--muted);font-size:11px;font-weight:600}
+    .moneyValue b{font-size:18px}
+    button,input,select{font:inherit;border-radius:10px;border:1px solid var(--line);background:#101722;color:var(--text);padding:10px}
+    button{font-weight:750;cursor:pointer}
+    button.start{background:#133625;color:#dbffe6;border-color:#24533b}
+    button.pause,.danger{background:#3a1c1c;color:#ffe0e0;border-color:#633b3b}
+    .muted{color:var(--muted)}.hint{font-size:12px;color:var(--muted)}
+    details{margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:12px;background:#10151d}
+    summary{cursor:pointer;font-weight:750}
+    table{width:100%;border-collapse:collapse;margin-top:8px;font-variant-numeric:tabular-nums}
+    th,td{padding:8px 5px;text-align:left;border-bottom:1px solid #222b3a}
+    th{color:#b9c3d3}td input{width:100%;padding:7px}
+    .timeInput{width:100px}.delete{padding:6px 10px;color:var(--red)}
+    .exportBox{display:none;margin-top:10px;width:100%;min-height:130px;font-family:ui-monospace,monospace;font-size:12px}
+    .pill{display:inline-block;border:1px solid #27435a;border-radius:999px;padding:2px 8px;color:#a2c9ff;font-size:12px;white-space:nowrap}
+    .moneyPill{border-color:#285439;color:var(--green)}
+    .dayRatePill{display:inline-flex;align-items:center;gap:5px;border-color:var(--line);color:#b9c3d3}
+    .dayRateInput{width:82px;padding:2px 6px;border-radius:7px;text-align:right;color:var(--text);background:#101722;border-color:var(--line);font-size:12px;font-variant-numeric:tabular-nums}
+    @media(max-width:760px){.rateLabel{width:100%}.rateInput{flex:1}.kpiValues{align-items:flex-start}.moneyValue{width:100%;justify-content:space-between}}
+    @media(max-width:600px){.app{padding:10px}.timer{font-size:39px}.kpi{grid-template-columns:1fr}.timeInput{width:88px}th,td{padding:6px 3px}}
+  </style>
+</head>
+<body><main class="app">
+  <section class="card">
+    <h1>Worktime Tracker</h1>
+    <div id="timer" class="timer">00:00:00</div>
+    <div class="row">
+      <button id="toggle" class="start">▶️ Start</button>
+      <button id="endDay">✅ End day</button>
+      <button id="clear" class="danger">🗑 Clear</button>
+    </div>
+    <div class="row">
+      <label>Period: <input id="from" type="date"></label><span>—</span><label><input id="to" type="date"></label>
+      <label class="grow">Time zone: <select id="tz"></select></label>
+      <label class="rateLabel">Hourly rate: <input id="hourlyRate" class="rateInput" type="number" min="0" step="0.01" inputmode="decimal" value="0.00"></label>
+    </div>
+    <div class="kpi">
+      <div><span>Period total</span><div class="kpiValues"><b id="total">00:00:00</b><span class="moneyValue"><small>Earnings</small><b id="totalMoney">0.00</b></span></div></div>
+      <div><span>Today</span><div class="kpiValues"><b id="today">00:00:00</b><span class="moneyValue"><small>Earnings</small><b id="todayMoney">0.00</b></span></div></div>
+      <div><span>Active session</span><div class="kpiValues"><b id="active">—</b><span class="moneyValue"><small>Earnings</small><b id="activeMoney">0.00</b></span></div></div>
+    </div>
+  </section>
+  <section class="card"><h2>Daily history</h2><div id="history"></div></section>
+  <section class="card">
+    <h2>Data</h2>
+    <p class="hint">Import supports the old array of sessions and the new format with rates by day. The export saves sessions, time zone, current rate, and all days' rates.</p>
+    <div class="row"><button id="export">⬇️ Export JSON</button><button id="import">⬆️ Import JSON</button><button id="copy" style="display:none">Copy JSON</button></div>
+    <textarea id="exportBox" class="exportBox" readonly></textarea>
+  </section>
+</main>
+<input id="file" type="file" accept="application/json" hidden>
+<script>
+(()=>{'use strict';
+const KEY='wt.sessions.v1',TZ='wt.timezone.v1',RATE='wt.hourlyRate.v1',DAY_RATES='wt.dailyRates.v1',$=s=>document.querySelector(s);
+let sessions=[],tz='auto',hourlyRate=0,dailyRates={},hasRateHistory=false,ticker,lastWindowTitle,lastTickSecond=-1,timerUnsubscribe,saveQueue=Promise.resolve(),rateSaveTimer,currentRateDay='';
+
+const pad=n=>String(n).padStart(2,'0');
+const now=()=>Date.now();
+const uid=()=>crypto.randomUUID?crypto.randomUUID():`${now()}-${Math.random()}`;
+const validRate=v=>v!==null&&v!==''&&Number.isFinite(Number(v))&&Number(v)>=0;
+const normalizeRate=v=>validRate(v)?Number(v):0;
+const money=n=>(Math.round((Number(n)||0)*100+Number.EPSILON)/100).toFixed(2);
+const moneyCents=c=>(Math.max(0,Math.round(Number(c)||0))/100).toFixed(2);
+const offset=()=>tz==='auto'?-new Date().getTimezoneOffset()/60:Number(tz);
+const parts=(ms,o=offset())=>{let d=new Date(ms+o*36e5);return {y:d.getUTCFullYear(),m:d.getUTCMonth()+1,d:d.getUTCDate(),h:d.getUTCHours(),min:d.getUTCMinutes(),s:d.getUTCSeconds()}};
+const date=(ms,o=offset())=>{let p=parts(ms,o);return `${p.y}-${pad(p.m)}-${pad(p.d)}`};
+const clock=(ms,o=offset())=>{let p=parts(ms,o);return `${pad(p.h)}:${pad(p.min)}:${pad(p.s)}`};
+const hms=ms=>{let s=Math.max(0,Math.floor(ms/1000));return `${pad(Math.floor(s/3600))}:${pad(Math.floor(s%3600/60))}:${pad(s%60)}`};
+const active=()=>sessions.find(s=>s.end==null);
+const bounds=(d,o)=>{let [y,m,day]=d.split('-').map(Number),a=Date.UTC(y,m-1,day)-o*36e5;return[a,a+864e5]};
+const overlap=(a,b,c,d)=>Math.max(0,Math.min(b,d)-Math.max(a,c));
+const amountCents=(ms,rate)=>Math.round(ms/36e5*normalizeRate(rate)*100);
+
+function parseStored(value,fallback){
+  if(value==null)return fallback;
+  if(typeof value==='string'){
+    try{return JSON.parse(value)}catch(_){return value}
+  }
+  return value;
+}
+
+function getDayRate(day){
+  if(validRate(dailyRates[day]))return Number(dailyRates[day]);
+  for(let s of sessions){
+    if(!validRate(s.hourlyRate))continue;
+    let o=Number.isFinite(s.tzOffset)?s.tzOffset:offset();
+    if(date(s.start,o)===day)return Number(s.hourlyRate);
+  }
+  return 0;
+}
+
+function ensureDayRate(day){
+  if(!validRate(dailyRates[day]))dailyRates[day]=normalizeRate(hourlyRate);
+  return Number(dailyRates[day]);
+}
+
+function seedAllSessionDays(rate){
+  let value=normalizeRate(rate),current=now();
+  for(let s of sessions){
+    let o=Number.isFinite(s.tzOffset)?s.tzOffset:offset(),end=s.end??current,cur=s.start;
+    if(cur>=end){dailyRates[date(cur,o)]=value;continue}
+    while(cur<end){
+      let d=date(cur,o),[,b]=bounds(d,o);
+      dailyRates[d]=value;
+      cur=b;
+    }
+    if(!validRate(s.hourlyRate))s.hourlyRate=value;
+  }
+  dailyRates[currentRateDay]=value;
+  hasRateHistory=true;
+}
+
+async function read(){
+  try{
+    let v=window.mini?await mini.storage.public.get(KEY):localStorage.getItem(KEY);
+    sessions=parseStored(v,[]);
+    if(!Array.isArray(sessions))sessions=[];
+    let t=window.mini?await mini.storage.public.get(TZ):localStorage.getItem(TZ);
+    t=parseStored(t,'auto');
+    tz=(typeof t==='object'?t?.mode:t)||'auto';
+    let r=window.mini?await mini.storage.public.get(RATE):localStorage.getItem(RATE);
+    r=parseStored(r,0);
+    hourlyRate=normalizeRate(typeof r==='object'?r?.value:r);
+    let dr=window.mini?await mini.storage.public.get(DAY_RATES):localStorage.getItem(DAY_RATES);
+    dr=parseStored(dr,{});
+    dailyRates=dr&&typeof dr==='object'&&!Array.isArray(dr)?dr:{};
+  }catch(_){sessions=[];tz='auto';hourlyRate=0;dailyRates={}}
+  sessions=sessions
+    .filter(s=>typeof s?.start==='number'&&(s.end==null||typeof s.end==='number'))
+    .map(s=>({...s,id:s.id||uid(),end:s.end===undefined?null:s.end,tzOffset:Number.isFinite(s.tzOffset)?s.tzOffset:offset(),hourlyRate:validRate(s.hourlyRate)?Number(s.hourlyRate):undefined}));
+  dailyRates=Object.fromEntries(Object.entries(dailyRates).filter(([d,v])=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&validRate(v)).map(([d,v])=>[d,Number(v)]));
+  hasRateHistory=Object.keys(dailyRates).length>0||hourlyRate!==0||sessions.some(s=>validRate(s.hourlyRate));
+}
+
+function save(){
+  let data=JSON.stringify(sessions),zone=tz,rate=hourlyRate,rates={...dailyRates};
+  let write=async()=>{
+    if(window.mini){
+      await mini.storage.public.set(KEY,data);
+      await mini.storage.public.set(TZ,{mode:zone});
+      await mini.storage.public.set(RATE,{value:rate});
+      await mini.storage.public.set(DAY_RATES,rates);
+    }else{
+      localStorage.setItem(KEY,data);
+      localStorage.setItem(TZ,zone);
+      localStorage.setItem(RATE,String(rate));
+      localStorage.setItem(DAY_RATES,JSON.stringify(rates));
+    }
+  };
+  let pending=saveQueue.then(write,write);
+  saveQueue=pending.catch(()=>{});
+  return pending;
+}
+
+function totals(from,to,current=now()){
+  let days={};
+  for(let s of sessions){
+    let o=Number.isFinite(s.tzOffset)?s.tzOffset:offset(),end=s.end??current,cur=s.start;
+    if(end<cur)continue;
+    while(cur<end){
+      let d=date(cur,o),[a,b]=bounds(d,o),n=overlap(s.start,end,a,b);
+      if(n&&d>=from&&d<=to){
+        let day=days[d]??={ms:0,rows:[]};
+        day.ms+=n;
+        day.rows.push({s,a:Math.max(a,s.start),b:Math.min(b,end),n});
+      }
+      if(b<=cur)break;
+      cur=b;
+    }
+  }
+  let total=0,totalMoneyCents=0;
+  for(let [d,day] of Object.entries(days)){
+    day.rate=getDayRate(d);
+    day.moneyCents=amountCents(day.ms,day.rate);
+    total+=day.ms;
+    totalMoneyCents+=day.moneyCents;
+  }
+  return {days,total,totalMoneyCents};
+}
+
+function rangeMoneyCents(start,end,o){
+  let total=0,cur=start;
+  while(cur<end){
+    let d=date(cur,o),[a,b]=bounds(d,o),n=overlap(start,end,a,b);
+    if(n)total+=amountCents(n,getDayRate(d));
+    if(b<=cur)break;
+    cur=b;
+  }
+  return total;
+}
+
+function todaySnapshot(current){
+  let key=date(current),result=totals(key,key,current),a=active();
+  if(a&&current>a.start&&result.total===0){
+    let activeOffset=Number.isFinite(a.tzOffset)?a.tzOffset:offset(),activeKey=date(current,activeOffset);
+    if(activeKey!==key){key=activeKey;result=totals(key,key,current)}
+  }
+  return {key,result};
+}
+
+function week(){
+  let p=parts(now()),u=Date.UTC(p.y,p.m-1,p.d),wd=new Date(u).getUTCDay(),a=new Date(u-((wd+6)%7)*864e5);
+  return [a.toISOString().slice(0,10),date(now())];
+}
+
+function getPeriod(){
+  let [df,dt]=week(),from=$('#from').value||df,to=$('#to').value||dt;
+  if(from>to)[from,to]=[to,from];
+  return [from,to];
+}
+
+function windowTitle(todayMs){
+  let minutes=Math.floor(todayMs/60000);
+  return todayMs?`${pad(Math.floor(minutes/60))}:${pad(minutes%60)}`:'Time Tracker';
+}
+
+function updateWindowTitle(todayMs){
+  let title=windowTitle(todayMs);
+  if(title===lastWindowTitle)return;
+  lastWindowTitle=title;
+  try{
+    let setTitle=window.mini?.app?.setWindowTitle;
+    if(typeof setTitle!=='function')return;
+    Promise.resolve(setTitle(title)).catch(()=>{lastWindowTitle=undefined});
+  }catch(_){lastWindowTitle=undefined}
+}
+
+function updateLive(){
+  let current=now(),dayNow=date(current);
+  if(dayNow!==currentRateDay){
+    currentRateDay=dayNow;
+    ensureDayRate(dayNow);
+    $('#hourlyRate').value=money(getDayRate(dayNow));
+    save();
+    render();
+    return;
+  }
+  let [from,to]=getPeriod(),r=totals(from,to,current),today=todaySnapshot(current),todayResult=today.result,a=active(),activeMs=a?Math.max(0,current-a.start):0;
+  $('#timer').textContent=a?hms(activeMs):'00:00:00';
+  $('#active').textContent=a?hms(activeMs):'—';
+  $('#total').textContent=hms(r.total);
+  $('#today').textContent=hms(todayResult.total);
+  $('#totalMoney').textContent=moneyCents(r.totalMoneyCents);
+  $('#todayMoney').textContent=moneyCents(todayResult.totalMoneyCents);
+  $('#activeMoney').textContent=moneyCents(a?rangeMoneyCents(a.start,current,Number.isFinite(a.tzOffset)?a.tzOffset:offset()):0);
+  updateWindowTitle(todayResult.total);
+  for(let [d,day] of Object.entries(r.days)){
+    let timeEl=document.querySelector(`[data-day-total="${d}"]`),moneyEl=document.querySelector(`[data-day-money="${d}"]`);
+    if(timeEl)timeEl.textContent=hms(day.ms);
+    if(moneyEl)moneyEl.textContent=moneyCents(day.moneyCents);
+  }
+}
+
+function tick(){updateLive()}
+
+function scheduleTick(){
+  let second=Math.floor(now()/1000);
+  if(second!==lastTickSecond){lastTickSecond=second;tick()}
+  ticker=requestAnimationFrame(scheduleTick);
+}
+
+async function startClock(){
+  if(window.mini?.timers){
+    try{
+      let timer=await mini.timers.create({intervalMs:1000,repeat:true});
+      ticker=timer.id;
+      timerUnsubscribe=mini.events.on(`timer.${timer.id}`,tick);
+      mini.events.on('app.destroy',()=>{timerUnsubscribe?.();mini.timers.cancel(timer.id).catch(()=>{})});
+      return;
+    }catch(_){ }
+  }
+  ticker=setInterval(tick,1000);
+}
+
+function render(){
+  let current=now(),[from,to]=getPeriod(),r=totals(from,to,current),today=todaySnapshot(current),todayResult=today.result,a=active(),activeMs=a?Math.max(0,current-a.start):0;
+  $('#timer').textContent=a?hms(activeMs):'00:00:00';
+  $('#active').textContent=a?hms(activeMs):'—';
+  $('#total').textContent=hms(r.total);
+  $('#today').textContent=hms(todayResult.total);
+  $('#totalMoney').textContent=moneyCents(r.totalMoneyCents);
+  $('#todayMoney').textContent=moneyCents(todayResult.totalMoneyCents);
+  $('#activeMoney').textContent=moneyCents(a?rangeMoneyCents(a.start,current,Number.isFinite(a.tzOffset)?a.tzOffset:offset()):0);
+  updateWindowTitle(todayResult.total);
+  $('#toggle').textContent=a?'⏸ Pause':'▶️ Start';
+  $('#toggle').className=a?'pause':'start';
+  let keys=Object.keys(r.days).sort().reverse();
+  $('#history').innerHTML=keys.length?keys.map(d=>`<details open><summary>${d} — <span class="pill" data-day-total="${d}">${hms(r.days[d].ms)}</span> <span class="pill dayRatePill">Rate: <input class="dayRateInput" data-day-rate="${d}" type="number" min="0" step="0.01" value="${money(r.days[d].rate)}"> /h</span> <span class="pill moneyPill">Earnings: <span data-day-money="${d}">${moneyCents(r.days[d].moneyCents)}</span></span> <span class="muted">(${r.days[d].rows.length} sessions)</span></summary><table><thead><tr><th>Start</th><th>End</th><th>Duration</th><th>Note</th><th></th></tr></thead><tbody>${r.days[d].rows.map(x=>row(x,d)).join('')}</tbody></table></details>`).join(''):'<p class="muted">No data for the selected period.</p>';
+  bind();
+}
+
+const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function row(x,d){
+  let s=x.s,o=s.tzOffset??offset(),canStart=date(s.start,o)===d,canEnd=s.end!=null&&date(s.end,o)===d;
+  return `<tr data-id="${esc(s.id)}" data-day="${d}"><td>${canStart?`<input class="timeInput startTime" type="time" step="1" value="${clock(s.start,o)}">`:clock(x.a,o)}</td><td>${s.end==null?'—':canEnd?`<input class="timeInput endTime" type="time" step="1" value="${clock(s.end,o)}">`:clock(x.b,o)}</td><td>${hms(x.n)}</td><td><input class="note" value="${esc(s.note)}" placeholder="Note..."></td><td><button class="delete">×</button></td></tr>`;
+}
+
+function toMs(d,t,o){
+  let q=/^(\d\d):(\d\d)(?::(\d\d))?$/.exec(t);
+  if(!q)return NaN;
+  return Date.UTC(...d.split('-').map((n,i)=>i===1?+n-1:+n),+q[1],+q[2],+(q[3]||0))-o*36e5;
+}
+
+function bind(){
+  $('#history').querySelectorAll('.dayRateInput').forEach(input=>{
+    for(let eventName of ['click','pointerdown','keydown'])input.addEventListener(eventName,e=>e.stopPropagation());
+    input.onchange=async e=>{
+      e.stopPropagation();
+      let raw=input.value.trim().replace(',','.'),value=Number(raw),day=input.dataset.dayRate;
+      if(raw===''||!validRate(value)){
+        alert('Enter an amount of at least 0.');
+        input.value=money(getDayRate(day));
+        return;
+      }
+      dailyRates[day]=value;
+      hasRateHistory=true;
+      if(day===currentRateDay){
+        hourlyRate=value;
+        $('#hourlyRate').value=money(value);
+      }
+      await save();
+      render();
+    };
+  });
+  $('#history').querySelectorAll('tr').forEach(tr=>{
+    let s=sessions.find(x=>String(x.id)===tr.dataset.id);
+    if(!s)return;
+    tr.querySelector('.note').oninput=e=>{s.note=e.target.value;save()};
+    let del=tr.querySelector('.delete');
+    del.onclick=async()=>{
+      let i=sessions.findIndex(x=>String(x.id)===tr.dataset.id);
+      if(i<0)return;
+      let removed=sessions[i];
+      del.disabled=true;
+      sessions.splice(i,1);
+      try{await save();render()}catch(e){sessions.splice(i,0,removed);render();alert('Unable to delete the session. Please try again.')}
+    };
+    for(let [cl,f] of [['startTime','start'],['endTime','end']]){
+      let el=tr.querySelector('.'+cl);
+      if(el)el.onchange=()=>{
+        let n=toMs(tr.dataset.day,el.value,s.tzOffset??offset());
+        if(!Number.isFinite(n)||(f==='start'&&s.end!=null&&n>s.end)||(f==='end'&&n<s.start)){
+          alert('Invalid session time.');render();return;
+        }
+        s[f]=n;save();render();
+      };
+    }
+  });
+}
+
+function exportJSON(){
+  let payload={
+    format:'worktime-tracker',
+    version:2,
+    exportedAt:new Date().toISOString(),
+    timezone:tz,
+    hourlyRateDefault:hourlyRate,
+    dailyRates:{...dailyRates},
+    sessions
+  };
+  let text=JSON.stringify(payload,null,2),box=$('#exportBox');
+  box.value=text;box.style.display='block';$('#copy').style.display='inline-block';
+  let a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([text],{type:'application/json'}));
+  a.download=`${date(now())}_worktime-data.json`;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
+function inferRatesFromSessions(items){
+  let rates={};
+  for(let s of items){
+    if(!validRate(s.hourlyRate)||typeof s.start!=='number')continue;
+    let o=Number.isFinite(s.tzOffset)?s.tzOffset:offset(),d=date(s.start,o);
+    if(!validRate(rates[d]))rates[d]=Number(s.hourlyRate);
+  }
+  return rates;
+}
+
+async function importText(text){
+  try{
+    let data=JSON.parse(text),items,importedRates={},importedRate=hourlyRate,importedTz=tz;
+    if(Array.isArray(data)){
+      items=data;
+      importedRates=inferRatesFromSessions(items);
+    }else if(data&&typeof data==='object'&&Array.isArray(data.sessions)){
+      items=data.sessions;
+      if(data.dailyRates&&typeof data.dailyRates==='object'&&!Array.isArray(data.dailyRates))importedRates=data.dailyRates;
+      if(validRate(data.hourlyRateDefault))importedRate=Number(data.hourlyRateDefault);
+      if(data.timezone==='auto'||validRate(data.timezone))importedTz=String(data.timezone);
+    }else throw Error('expected session array or Worktime Tracker export');
+    for(let s of items)if(typeof s?.start!=='number'||!(s.end==null||typeof s.end==='number'))throw Error('incorrect start or end');
+    sessions=items.map(s=>({id:s.id||uid(),start:s.start,end:s.end===undefined?null:s.end,note:s.note??'',tzOffset:Number.isFinite(s.tzOffset)?s.tzOffset:offset(),hourlyRate:validRate(s.hourlyRate)?Number(s.hourlyRate):undefined}));
+    hourlyRate=normalizeRate(importedRate);
+    dailyRates=Object.fromEntries(Object.entries(importedRates).filter(([d,v])=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&validRate(v)).map(([d,v])=>[d,Number(v)]));
+    if(!Object.keys(dailyRates).length)dailyRates=inferRatesFromSessions(sessions);
+    hasRateHistory=Object.keys(dailyRates).length>0||hourlyRate!==0||sessions.some(s=>validRate(s.hourlyRate));
+    tz=importedTz;
+    currentRateDay=date(now());
+    ensureDayRate(currentRateDay);
+    $('#tz').value=tz;
+    $('#hourlyRate').value=money(getDayRate(currentRateDay));
+    await save();render();alert(`Imported: ${sessions.length} sessions`);
+  }catch(e){alert(`Import error: ${e.message}`)}
+}
+
+async function choose(){
+  if(window.mini){
+    try{
+      let f=await mini.files.pick({mimeTypes:['application/json','text/json']});
+      let text=await mini.files.readText(f.id);
+      await mini.files.release(f.id);
+      return importText(text);
+    }catch(e){if(e?.code!=='file_not_found')alert(`File selection error: ${e.message||e}`)}
+  }
+  $('#file').click();
+}
+
+function applyRateInput(saveImmediately=false){
+  let raw=$('#hourlyRate').value.trim().replace(',','.'),value=Number(raw);
+  if(raw===''||!validRate(value))return false;
+  hourlyRate=value;
+  if(!hasRateHistory)seedAllSessionDays(value);
+  else dailyRates[currentRateDay]=value;
+  let a=active();
+  updateLive();
+  clearTimeout(rateSaveTimer);
+  if(saveImmediately)save();else rateSaveTimer=setTimeout(save,250);
+  return true;
+}
+
+async function init(){
+  for(let i=-12;i<=14;i++)$('#tz').add(new Option(`UTC${i>=0?'+':''}${i}`,i));
+  $('#tz').add(new Option('Auto','auto'));
+  await read();
+  $('#tz').value=tz;
+  let w=week();$('#from').value=w[0];$('#to').value=w[1];
+  currentRateDay=date(now());
+  ensureDayRate(currentRateDay);
+  $('#hourlyRate').value=money(getDayRate(currentRateDay));
+
+  $('#toggle').onclick=async()=>{
+    let a=active();
+    if(a)a.end=now();
+    else{
+      let started=now(),o=offset(),d=date(started,o),rate=ensureDayRate(d);
+      sessions.push({id:uid(),start:started,end:null,tzOffset:o,hourlyRate:rate});
+    }
+    await save();render();
+  };
+
+  $('#endDay').onclick=async()=>{
+    let a=active();if(a)a.end=now();
+    let ended=now(),o=offset(),d=date(ended,o),rate=ensureDayRate(d);
+    sessions.push({id:uid(),start:ended,end:ended,note:'End of day',tzOffset:o,hourlyRate:rate});
+    await save();render();
+  };
+
+  $('#clear').onclick=async()=>{
+    if(confirm('Delete all local data, including daily rates?')){
+      sessions=[];dailyRates={};hourlyRate=0;hasRateHistory=false;currentRateDay=date(now());ensureDayRate(currentRateDay);$('#hourlyRate').value='0.00';
+      await save();render();
+    }
+  };
+
+  $('#from').onchange=$('#to').onchange=render;
+  $('#tz').onchange=async e=>{
+    tz=e.target.value;
+    currentRateDay=date(now());
+    ensureDayRate(currentRateDay);
+    $('#hourlyRate').value=money(getDayRate(currentRateDay));
+    await save();render();
+  };
+
+  $('#hourlyRate').oninput=()=>applyRateInput(false);
+  $('#hourlyRate').onchange=()=>{
+    if(!applyRateInput(true)){
+      alert('Enter an amount of at least 0.');
+      $('#hourlyRate').value=money(getDayRate(currentRateDay));
+    }else $('#hourlyRate').value=money(getDayRate(currentRateDay));
+  };
+
+  $('#export').onclick=exportJSON;
+  $('#copy').onclick=()=>navigator.clipboard?.writeText($('#exportBox').value);
+  $('#import').onclick=choose;
+  $('#file').onchange=e=>{let f=e.target.files[0];if(f){let r=new FileReader;r.onload=()=>importText(r.result);r.readAsText(f)}e.target.value=''};
+  render();await startClock();
+}
+
+init();
+})();
+</script></body></html>

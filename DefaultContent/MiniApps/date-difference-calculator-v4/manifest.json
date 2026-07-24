@@ -1,0 +1,10 @@
+{
+  "id": "com.htmlframework.datecalculator",
+  "name": "Date Calculator",
+  "version": "1.2.0",
+  "sdkVersion": 1,
+  "description": "Calculate years, months, weeks, and days between dates",
+  "author": "Denis",
+  "permissions": [],
+  "entry": "index.html"
+}

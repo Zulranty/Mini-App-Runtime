@@ -1,0 +1,11 @@
+# Re-creatable local caches and build intermediates
+Cache/
+Output/
+.codex-remote-attachments/
+**/bin/
+**/obj/
+*.log
+
+# Local IDE files
+.idea/
+*.iml

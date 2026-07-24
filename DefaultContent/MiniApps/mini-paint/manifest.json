@@ -1,0 +1,15 @@
+{
+  "id": "com.openai.minipaint",
+  "name": "Mini Paint",
+  "version": "1.0.0",
+  "sdkVersion": 2,
+  "minRuntimeVersion": "1.4.0",
+  "entry": "index.html",
+  "description": "Paint-style image editor and drawing tool",
+  "author": "OpenAI",
+  "permissions": [
+    "storage",
+    "files.pick",
+    "files.save"
+  ]
+}

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.18362.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+    <PublishTrimmed>false</PublishTrimmed>
+    <RollForward>Major</RollForward>
+    <AssemblyName>MiniApps</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3240.44" />
+  </ItemGroup>
+  <Target Name="RemoveUnusedWebView2WpfReference" BeforeTargets="ResolveAssemblyReferences">
+    <!-- WebView2 adds both WinForms and WPF assemblies; this is a WinForms-only app. -->
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Reference.Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
+    </ItemGroup>
+  </Target>
+  <ItemGroup>
+    <Compile Include="..\..\Code\Windows\**\*.cs" />
+    <Content Include="..\..\Code\Framework\shared\web\runtime.js" Link="runtime.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\Code\Framework\shared\launcher-runtime.js" Link="launcher-runtime.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\DefaultContent\Interface\**\*" Link="Interface\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\DefaultContent\MiniApps\**\*" Link="MiniApps\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

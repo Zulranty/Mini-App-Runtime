@@ -1,0 +1,1497 @@
+<!doctype html>
+<!-- Build: metro-v4-interface-settings; equal tiles; stable colors; launcher.getAppInfo; native interface settings -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Mini Apps</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      --accent: #0078d7;
+      --accent-dark: #005a9e;
+      --accent-soft: #2b88d8;
+      --accent-foreground: #ffffff;
+      --background: #101010;
+      --surface: #1f1f1f;
+      --surface-2: #292929;
+      --surface-3: #333333;
+      --text: #ffffff;
+      --muted: #b7b7b7;
+      --line: #4a4a4a;
+      background: var(--background);
+      color: var(--text);
+    }
+
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+
+    html, body { min-height: 100%; }
+
+    body {
+      margin: 0;
+      overflow-x: hidden;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,.025) 0 1px, transparent 1px 44px),
+        var(--background);
+      color: var(--text);
+    }
+
+    button, input { font: inherit; }
+
+    button {
+      border: 0;
+      border-radius: 0;
+      color: inherit;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button:focus-visible,
+    .app:focus-visible,
+    input:focus-visible {
+      outline: 3px solid #ffffff;
+      outline-offset: 3px;
+    }
+
+    .shell {
+      width: min(1380px, 100%);
+      margin: 0 auto;
+      padding: max(30px, env(safe-area-inset-top)) 30px max(34px, env(safe-area-inset-bottom));
+    }
+
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 28px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(36px, 5vw, 62px);
+      font-weight: 300;
+      letter-spacing: -.035em;
+      line-height: 1;
+    }
+
+    .commands {
+      display: flex;
+      gap: 8px;
+      padding-top: 4px;
+    }
+
+    .command {
+      width: 50px;
+      height: 50px;
+      display: grid;
+      place-items: center;
+      background: var(--surface-2);
+      font-size: 30px;
+      font-weight: 300;
+      line-height: 1;
+      transition: transform .12s ease, background .12s ease;
+    }
+
+    .command:hover { background: var(--accent); }
+    .command:active { transform: scale(.94); }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 0 0 12px;
+    }
+
+    .section-title h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 400;
+    }
+
+    .section-title span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .apps {
+      display: grid;
+      grid-template-columns: repeat(var(--app-columns, 2), minmax(0, 1fr));
+      grid-auto-flow: row;
+      gap: 8px;
+    }
+
+    .app {
+      position: relative;
+      min-width: 0;
+      overflow: hidden;
+      padding: 15px;
+      background: var(--tile-color, var(--accent));
+      color: var(--tile-foreground, #ffffff);
+      cursor: pointer;
+      user-select: none;
+      transition: transform .13s ease, filter .13s ease;
+      isolation: isolate;
+      aspect-ratio: 1 / 1;
+      min-height: 138px;
+    }
+
+    .app::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background: linear-gradient(145deg, rgba(255,255,255,.13), transparent 48%, rgba(0,0,0,.12));
+      opacity: .8;
+    }
+
+    .app:hover {
+      filter: brightness(1.09);
+      transform: translateY(-2px);
+    }
+
+    .app:active { transform: scale(.975); }
+
+    .tile-icon {
+      width: 66px;
+      height: 66px;
+      display: grid;
+      place-items: center;
+      border: 2px solid currentColor;
+      font-size: 27px;
+      font-weight: 300;
+      letter-spacing: -.06em;
+      opacity: .94;
+    }
+
+    .tile-copy {
+      position: absolute;
+      right: 15px;
+      bottom: 13px;
+      left: 15px;
+      min-width: 0;
+    }
+
+    .app h3 {
+      margin: 0;
+      overflow: hidden;
+      font-size: 17px;
+      font-weight: 600;
+      line-height: 1.16;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .app small {
+      display: block;
+      margin-top: 5px;
+      overflow: hidden;
+      font-size: 12px;
+      line-height: 1.25;
+      opacity: .83;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .dots {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      background: transparent;
+      color: inherit;
+      font-size: 22px;
+      line-height: 1;
+      opacity: .78;
+    }
+
+    .dots:hover { background: rgba(0,0,0,.22); opacity: 1; }
+
+    .empty {
+      min-height: 220px;
+      display: grid;
+      place-items: center;
+      border: 1px dashed var(--line);
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .empty strong {
+      display: block;
+      margin-bottom: 7px;
+      color: var(--text);
+      font-size: 20px;
+      font-weight: 400;
+    }
+
+    .menu {
+      position: fixed;
+      z-index: 60;
+      width: min(270px, calc(100vw - 16px));
+      padding: 5px;
+      border: 1px solid #606060;
+      background: #202020;
+      box-shadow: 0 18px 44px rgba(0,0,0,.55);
+    }
+
+    .menu button {
+      width: 100%;
+      min-height: 43px;
+      padding: 9px 12px;
+      background: transparent;
+      text-align: left;
+      font-size: 14px;
+    }
+
+    .menu button:hover,
+    .menu button:focus-visible {
+      background: var(--accent);
+      color: var(--accent-foreground);
+      outline: none;
+    }
+
+    .settings-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      display: grid;
+      place-items: center;
+      padding: 22px;
+      background: rgba(0,0,0,.68);
+      backdrop-filter: blur(2px);
+    }
+
+    .settings-window {
+      width: min(920px, 100%);
+      height: min(680px, calc(100vh - 44px));
+      display: grid;
+      grid-template-rows: 50px minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid #696969;
+      background: #171717;
+      box-shadow: 0 24px 80px rgba(0,0,0,.72);
+    }
+
+    .window-titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-left: 17px;
+      background: var(--accent);
+      color: var(--accent-foreground);
+      user-select: none;
+    }
+
+    .window-titlebar strong {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .window-close {
+      align-self: stretch;
+      width: 52px;
+      background: transparent;
+      color: inherit;
+      font-size: 24px;
+    }
+
+    .window-close:hover { background: #c42b1c; color: #fff; }
+
+    .settings-layout {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+    }
+
+    .settings-nav {
+      padding: 18px 0;
+      border-right: 1px solid #3f3f3f;
+      background: #202020;
+    }
+
+    .settings-nav button {
+      width: 100%;
+      min-height: 48px;
+      padding: 10px 18px;
+      background: transparent;
+      text-align: left;
+      font-size: 15px;
+    }
+
+    .settings-nav button:hover { background: #303030; }
+
+    .settings-nav button.active {
+      position: relative;
+      background: #303030;
+    }
+
+    .settings-nav button.active::before {
+      content: "";
+      position: absolute;
+      top: 7px;
+      bottom: 7px;
+      left: 0;
+      width: 5px;
+      background: var(--accent);
+    }
+
+    .settings-content {
+      min-width: 0;
+      overflow: auto;
+      padding: 30px;
+    }
+
+    .settings-page[hidden] { display: none; }
+
+    .settings-page h2 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      font-weight: 300;
+    }
+
+    .settings-page > p {
+      margin: 0 0 26px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .setting-group {
+      margin-top: 28px;
+    }
+
+    .setting-group h3 {
+      margin: 0 0 13px;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .swatches {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+      gap: 9px;
+      max-width: 480px;
+    }
+
+    .swatch {
+      position: relative;
+      aspect-ratio: 1;
+      min-width: 52px;
+      border: 3px solid transparent;
+      background: var(--swatch);
+    }
+
+    .swatch:hover { filter: brightness(1.13); }
+
+    .swatch.active {
+      border-color: #ffffff;
+      box-shadow: inset 0 0 0 2px #171717;
+    }
+
+    .swatch.active::after {
+      content: "✓";
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      color: var(--swatch-text, #fff);
+      font-size: 25px;
+      font-weight: 700;
+    }
+
+    .custom-color {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .custom-color input[type="color"] {
+      width: 64px;
+      height: 46px;
+      padding: 0;
+      border: 1px solid #696969;
+      border-radius: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .custom-color span {
+      color: var(--muted);
+      font-family: ui-monospace, "Cascadia Mono", monospace;
+    }
+
+
+    .column-options {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(52px, 74px));
+      gap: 8px;
+      max-width: 320px;
+    }
+
+    .column-option {
+      min-height: 48px;
+      border: 2px solid transparent;
+      background: #303030;
+      color: #ffffff;
+      font-size: 17px;
+    }
+
+    .column-option:hover { background: #3b3b3b; }
+
+    .column-option.active {
+      border-color: #ffffff;
+      background: var(--accent);
+      color: var(--accent-foreground);
+      box-shadow: inset 0 0 0 2px #171717;
+    }
+
+    .setting-hint {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .app-info-window {
+      width: min(720px, 100%);
+      height: min(700px, calc(100vh - 44px));
+    }
+
+    .app-info-content {
+      min-height: 0;
+      overflow: auto;
+      padding: 26px;
+    }
+
+    .app-info-hero {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 24px;
+    }
+
+    .app-info-icon {
+      width: 82px;
+      height: 82px;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      border: 2px solid currentColor;
+      background: var(--app-info-color, var(--accent));
+      color: var(--app-info-foreground, #ffffff);
+      font-size: 31px;
+      font-weight: 300;
+      letter-spacing: -.06em;
+    }
+
+    .app-info-hero h2 {
+      margin: 0 0 5px;
+      font-size: 29px;
+      font-weight: 300;
+      line-height: 1.1;
+      overflow-wrap: anywhere;
+    }
+
+    .app-info-hero p {
+      margin: 0;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+
+    .app-info-value {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .app-info-empty,
+    .app-info-loading,
+    .app-info-warning {
+      padding: 18px;
+      background: #242424;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .app-info-warning {
+      margin-bottom: 14px;
+      border-left: 5px solid #d78300;
+      color: #ffffff;
+    }
+
+    .app-info-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+      gap: 8px;
+      margin: 0 0 22px;
+    }
+
+    .app-info-stat {
+      min-width: 0;
+      padding: 14px;
+      background: #242424;
+    }
+
+    .app-info-stat span {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .app-info-stat strong {
+      display: block;
+      font-size: 18px;
+      font-weight: 400;
+      overflow-wrap: anywhere;
+    }
+
+    .app-info-section + .app-info-section { margin-top: 22px; }
+
+    .app-info-section h3 {
+      margin: 0 0 10px;
+      font-size: 17px;
+      font-weight: 600;
+    }
+
+    .app-info-raw {
+      margin-top: 22px;
+      border: 1px solid #3e3e3e;
+      background: #202020;
+    }
+
+    .app-info-raw summary {
+      padding: 13px 15px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .app-info-raw pre {
+      max-height: 320px;
+      margin: 0;
+      overflow: auto;
+      padding: 15px;
+      border-top: 1px solid #3e3e3e;
+      background: #171717;
+      color: #e7e7e7;
+      font: 12px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .interface-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .interface-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 64px;
+      padding: 12px 14px;
+      border-left: 5px solid transparent;
+      background: #262626;
+    }
+
+    .interface-item.active { border-left-color: var(--accent); }
+
+    .interface-item strong {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 15px;
+    }
+
+    .interface-item small { color: var(--muted); }
+
+    .metro-button {
+      min-height: 40px;
+      padding: 9px 15px;
+      background: var(--accent);
+      color: var(--accent-foreground);
+    }
+
+    .metro-button:hover { filter: brightness(1.12); }
+    .metro-button.secondary { background: #3a3a3a; color: #fff; }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+      gap: 1px;
+      background: #3e3e3e;
+      border: 1px solid #3e3e3e;
+    }
+
+    .info-grid div {
+      min-width: 0;
+      padding: 13px 15px;
+      background: #242424;
+      overflow-wrap: anywhere;
+    }
+
+    .info-grid .label { color: var(--muted); }
+
+    .toast {
+      position: fixed;
+      z-index: 120;
+      left: 50%;
+      bottom: max(22px, env(safe-area-inset-bottom));
+      max-width: min(520px, calc(100vw - 28px));
+      padding: 12px 17px;
+      background: var(--accent);
+      color: var(--accent-foreground);
+      box-shadow: 0 12px 32px rgba(0,0,0,.5);
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 18px);
+      transition: opacity .16s ease, transform .16s ease;
+    }
+
+    .toast.on {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    @media (max-width: 760px) {
+      .shell { padding: 22px 14px 28px; }
+      .topbar { align-items: center; margin-bottom: 22px; }
+      h1 { font-size: 39px; }
+      .command { width: 46px; height: 46px; }
+      .apps {
+        grid-template-columns: repeat(var(--app-columns, 2), minmax(0, 1fr));
+      }
+      .app { min-height: 118px; }
+      .settings-overlay { padding: 0; }
+      .settings-window {
+        width: 100%;
+        height: 100%;
+        border: 0;
+      }
+      .settings-layout {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto minmax(0, 1fr);
+      }
+      .settings-nav {
+        display: flex;
+        overflow-x: auto;
+        padding: 0;
+        border-right: 0;
+        border-bottom: 1px solid #3f3f3f;
+      }
+      .settings-nav button {
+        width: auto;
+        flex: 0 0 auto;
+        min-height: 48px;
+        padding: 10px 15px;
+      }
+      .settings-nav button.active::before {
+        top: auto;
+        right: 7px;
+        bottom: 0;
+        left: 7px;
+        width: auto;
+        height: 4px;
+      }
+      .settings-content { padding: 22px 17px 32px; }
+      .settings-page h2 { font-size: 27px; }
+      .column-options { grid-template-columns: repeat(4, minmax(48px, 1fr)); max-width: none; }
+      .app-info-content { padding: 21px 17px 30px; }
+      .app-info-hero { align-items: flex-start; }
+      .app-info-icon { width: 70px; height: 70px; font-size: 27px; }
+      .app-info-hero h2 { font-size: 25px; }
+      .info-grid { grid-template-columns: 1fr; }
+      .info-grid .label { padding-bottom: 4px; }
+      .info-grid .label + div { padding-top: 4px; }
+    }
+
+    @media (max-width: 390px) {
+      .commands { gap: 5px; }
+      .command { width: 42px; height: 42px; }
+      .app { padding: 12px; min-height: 108px; }
+      .tile-copy { right: 12px; bottom: 11px; left: 12px; }
+      .tile-icon { width: 58px; height: 58px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; }
+    }
+  </style>
+  <!-- Native runtime injects its launcher bridge at this head marker. -->
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1>Applications</h1>
+      </div>
+      <div class="commands" aria-label="Teams">
+        <button id="addApp" class="command" type="button" aria-label="Add an application" title="Add an application">＋</button>
+        <button id="more" class="command" type="button" aria-label="Menu" title="Menu">⋯</button>
+      </div>
+    </header>
+
+    <div class="section-title">
+      <h2>All applications</h2>
+      <span id="appCount"></span>
+    </div>
+
+    <section id="apps" class="apps" aria-live="polite"></section>
+    <section id="empty" class="empty" hidden>
+      <div><strong>It's empty here yet</strong>Add an HTML or ZIP attachment.</div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    const DEFAULT_ACCENT = '#0078d7';
+    const DEFAULT_COLUMNS = 2;
+    const MIN_COLUMNS = 1;
+    const MAX_COLUMNS = 8;
+    const PRESETS = ['#0078d7', '#0063b1', '#008272', '#107c10', '#498205', '#ca5010', '#d13438', '#e3008c', '#881798', '#5c2d91', '#4f6bed', '#767676'];
+    const TILE_COLORS = [
+      '#0078d7', '#0063b1', '#008272', '#107c10', '#498205', '#00b294',
+      '#ca5010', '#da3b01', '#d13438', '#e81123', '#e3008c', '#bf0077',
+      '#881798', '#744da9', '#5c2d91', '#4f6bed', '#486860', '#525e54',
+      '#767676', '#6b69d6', '#018574', '#7a7574', '#8e562e', '#a4262c'
+    ];
+
+    let menu = null;
+    let settingsOverlay = null;
+    let appInfoOverlay = null;
+    let busy = false;
+    let toastTimer = 0;
+    let interfaceSettings = {};
+    let settingsLoaded = false;
+    let settingsWriteChain = Promise.resolve();
+
+    const $ = selector => document.querySelector(selector);
+    const appsRoot = $('#apps');
+    const empty = $('#empty');
+    const toast = $('#toast');
+    const appCount = $('#appCount');
+
+    const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[char]);
+
+    function normalizeHex(value) {
+      const text = String(value || '').trim().toLowerCase();
+      return /^#[0-9a-f]{6}$/.test(text) ? text : DEFAULT_ACCENT;
+    }
+
+    function adjustHex(hex, amount) {
+      const value = normalizeHex(hex).slice(1);
+      const parts = [0, 2, 4].map(index => parseInt(value.slice(index, index + 2), 16));
+      const adjusted = parts.map(part => Math.max(0, Math.min(255, Math.round(part + (amount < 0 ? part : 255 - part) * Math.abs(amount)))));
+      return '#' + adjusted.map(part => part.toString(16).padStart(2, '0')).join('');
+    }
+
+    function readableText(hex) {
+      const value = normalizeHex(hex).slice(1);
+      const [r, g, b] = [0, 2, 4].map(index => parseInt(value.slice(index, index + 2), 16));
+      const linear = [r, g, b].map(channel => {
+        const c = channel / 255;
+        return c <= .03928 ? c / 12.92 : Math.pow((c + .055) / 1.055, 2.4);
+      });
+      const luminance = .2126 * linear[0] + .7152 * linear[1] + .0722 * linear[2];
+      return luminance > .52 ? '#111111' : '#ffffff';
+    }
+
+    function storedAccent() {
+      return normalizeHex(interfaceSettings.accentColor || DEFAULT_ACCENT);
+    }
+
+    function normalizeColumns(value) {
+      const number = Number.parseInt(value, 10);
+      return Number.isFinite(number)
+        ? Math.max(MIN_COLUMNS, Math.min(MAX_COLUMNS, number))
+        : DEFAULT_COLUMNS;
+    }
+
+    function storedColumns() {
+      return normalizeColumns(interfaceSettings.columns ?? DEFAULT_COLUMNS);
+    }
+
+    function normalizedSettingsSnapshot() {
+      return {
+        ...interfaceSettings,
+        accentColor: storedAccent(),
+        columns: storedColumns()
+      };
+    }
+
+    async function loadInterfaceSettings() {
+      if (settingsLoaded) return normalizedSettingsSnapshot();
+      settingsLoaded = true;
+
+      if (typeof launcher.getInterfaceSettings !== 'function') {
+        interfaceSettings = {};
+        return normalizedSettingsSnapshot();
+      }
+
+      try {
+        const value = await launcher.getInterfaceSettings();
+        interfaceSettings = value && typeof value === 'object' && !Array.isArray(value) ? { ...value } : {};
+      } catch (error) {
+        interfaceSettings = {};
+        fail(error);
+      }
+
+      interfaceSettings.accentColor = storedAccent();
+      interfaceSettings.columns = storedColumns();
+      return normalizedSettingsSnapshot();
+    }
+
+    function persistInterfaceSettings() {
+      const snapshot = normalizedSettingsSnapshot();
+      interfaceSettings = { ...snapshot };
+
+      if (typeof launcher.setInterfaceSettings !== 'function') {
+        const error = new Error('The current runtime version does not support saving interface settings.');
+        fail(error);
+        return Promise.reject(error);
+      }
+
+      settingsWriteChain = settingsWriteChain
+        .catch(() => undefined)
+        .then(() => launcher.setInterfaceSettings(snapshot));
+
+      return settingsWriteChain.catch(error => {
+        fail(error);
+        throw error;
+      });
+    }
+
+    function setAccent(value, persist = true) {
+      const accent = normalizeHex(value);
+      interfaceSettings.accentColor = accent;
+      const root = document.documentElement.style;
+      root.setProperty('--accent', accent);
+      root.setProperty('--accent-dark', adjustHex(accent, -.24));
+      root.setProperty('--accent-soft', adjustHex(accent, .14));
+      root.setProperty('--accent-foreground', readableText(accent));
+      document.querySelectorAll('.swatch').forEach(button => {
+        button.classList.toggle('active', normalizeHex(button.dataset.color) === accent);
+      });
+      const custom = document.querySelector('#customAccent');
+      const label = document.querySelector('#customAccentValue');
+      if (custom) custom.value = accent;
+      if (label) label.textContent = accent.toUpperCase();
+      if (persist) persistInterfaceSettings().catch(() => undefined);
+      return accent;
+    }
+
+    function setColumns(value, persist = true) {
+      const columns = normalizeColumns(value);
+      interfaceSettings.columns = columns;
+      document.documentElement.style.setProperty('--app-columns', String(columns));
+      document.querySelectorAll('.column-option').forEach(button => {
+        button.classList.toggle('active', Number(button.dataset.columns) === columns);
+      });
+      const label = document.querySelector('#columnsCurrent');
+      if (label) label.textContent = String(columns);
+      if (persist) persistInterfaceSettings().catch(() => undefined);
+      return columns;
+    }
+
+    function initials(name) {
+      const words = String(name || 'App').trim().split(/\s+/).filter(Boolean);
+      return (words.slice(0, 2).map(word => word[0]).join('') || 'A').toUpperCase();
+    }
+
+
+    function stableHash(value) {
+      let hash = 2166136261;
+      const text = String(value || 'app');
+      for (let index = 0; index < text.length; index++) {
+        hash ^= text.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+      }
+      return hash >>> 0;
+    }
+
+    function tileColor(app) {
+      const key = app?.id || app?.name || 'app';
+      return TILE_COLORS[stableHash(key) % TILE_COLORS.length];
+    }
+
+    function say(message) {
+      clearTimeout(toastTimer);
+      toast.textContent = String(message || 'Done');
+      toast.classList.add('on');
+      toastTimer = setTimeout(() => toast.classList.remove('on'), 2600);
+    }
+
+    function fail(error) {
+      say(error?.message || error?.code || 'Operation failed');
+    }
+
+    function closeMenu() {
+      menu?.remove();
+      menu = null;
+    }
+
+    function closeSettings() {
+      settingsOverlay?.remove();
+      settingsOverlay = null;
+    }
+
+    function closeAppInfo() {
+      appInfoOverlay?.remove();
+      appInfoOverlay = null;
+    }
+
+    async function call(action) {
+      if (busy) return;
+      busy = true;
+      try {
+        const result = await action();
+        if (result?.message) say(result.message);
+        return result;
+      } catch (error) {
+        fail(error);
+      } finally {
+        busy = false;
+      }
+    }
+
+    function popupMenu(x, y, items) {
+      closeMenu();
+      menu = document.createElement('div');
+      menu.className = 'menu';
+      menu.setAttribute('role', 'menu');
+
+      items.filter(Boolean).forEach(([label, action]) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = label;
+        button.onclick = () => {
+          closeMenu();
+          call(action);
+        };
+        menu.append(button);
+      });
+
+      document.body.append(menu);
+      const bounds = menu.getBoundingClientRect();
+      menu.style.left = Math.max(8, Math.min(x - bounds.width, innerWidth - bounds.width - 8)) + 'px';
+      menu.style.top = Math.max(8, Math.min(y, innerHeight - bounds.height - 8)) + 'px';
+
+      setTimeout(() => addEventListener('pointerdown', event => {
+        if (!menu?.contains(event.target)) closeMenu();
+      }, { once: true }), 0);
+    }
+
+    async function loadApps() {
+      const list = await launcher.list();
+      const fragment = document.createDocumentFragment();
+
+      list.forEach(app => {
+        const tile = document.createElement('article');
+        tile.className = 'app';
+        tile.tabIndex = 0;
+        tile.setAttribute('role', 'button');
+        tile.setAttribute('aria-label', `Open ${app.name}`);
+        const color = tileColor(app);
+        tile.style.setProperty('--tile-color', color);
+        tile.style.setProperty('--tile-foreground', readableText(color));
+        tile.innerHTML = `
+          <div class="tile-icon" aria-hidden="true">${escapeHtml(initials(app.name))}</div>
+          <div class="tile-copy">
+            <h3>${escapeHtml(app.name)}</h3>
+            <small>${escapeHtml(app.version)}${app.description ? ' · ' + escapeHtml(app.description) : ''}</small>
+          </div>
+          <button class="dots" type="button" aria-label="Actions with ${escapeHtml(app.name)}">•••</button>`;
+
+        tile.onclick = event => {
+          if (!event.target.closest('.dots') && !busy) launcher.open(app.id).catch(fail);
+        };
+        tile.onkeydown = event => {
+          if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('.dots')) {
+            event.preventDefault();
+            launcher.open(app.id).catch(fail);
+          }
+        };
+        tile.oncontextmenu = event => {
+          event.preventDefault();
+          showAppMenu(app, event.clientX, event.clientY);
+        };
+        tile.onauxclick = event => {
+          if (event.button === 1 && typeof launcher.openNewWindow === 'function') {
+            event.preventDefault();
+            launcher.openNewWindow(app.id).catch(fail);
+          }
+        };
+        tile.querySelector('.dots').onclick = event => {
+          event.stopPropagation();
+          const rect = event.currentTarget.getBoundingClientRect();
+          showAppMenu(app, rect.right, rect.bottom);
+        };
+        fragment.append(tile);
+      });
+
+      appsRoot.replaceChildren(fragment);
+      empty.hidden = list.length > 0;
+      appsRoot.hidden = list.length === 0;
+      appCount.textContent = list.length ? `${list.length} ${declension(list.length, ['application', 'applications', 'applications'])}` : '';
+    }
+
+    function declension(number, forms) {
+      const n = Math.abs(number) % 100;
+      const n1 = n % 10;
+      if (n > 10 && n < 20) return forms[2];
+      if (n1 > 1 && n1 < 5) return forms[1];
+      if (n1 === 1) return forms[0];
+      return forms[2];
+    }
+
+    function showAppMenu(app, x, y) {
+      popupMenu(x, y, [
+        ['Open', () => launcher.open(app.id)],
+        typeof launcher.openNewWindow === 'function' ? ['Open in a new window', () => launcher.openNewWindow(app.id)] : null,
+        ['Information', () => openAppInfo(app)],
+        ['Delete', () => launcher.deleteApp(app.id).then(loadApps)],
+        ['Share app', () => launcher.shareApp(app.id)],
+        ['Share data', () => launcher.shareAppData(app.id)]
+      ]);
+    }
+
+    const APP_INFO_LABELS = {
+      name: 'Name',
+      id: 'Application ID',
+      version: 'Version',
+      description: 'Description',
+      author: 'Author',
+      sdkVersion: 'SDK Version',
+      minRuntimeVersion: 'Minimum runtime version',
+      entry: 'Entry point',
+      icon: 'Icon',
+      permissions: 'Permissions',
+      network: 'Network Policy',
+      installedAt: 'Installed',
+      updatedAt: 'Last update',
+      appSizeBytes: 'App Size',
+      dataSizeBytes: 'Data size',
+      publicDataSizeBytes: 'Public data',
+      privateDataSizeBytes: 'Private data',
+      secureDataSizeBytes: 'Secure data'
+    };
+
+    const APP_INFO_ORDER = [
+      'name', 'id', 'version', 'description', 'author', 'sdkVersion',
+      'minRuntimeVersion', 'entry', 'icon', 'permissions', 'network',
+      'installedAt', 'updatedAt', 'appSizeBytes', 'dataSizeBytes',
+      'publicDataSizeBytes', 'privateDataSizeBytes', 'secureDataSizeBytes'];
+
+
+    function humanizeKey(key) {
+      return String(key)
+        .replace(/([a-z\u0430-\u044f0-9])([A-Z\u0410-\u042f])/g,'$1 $2')
+        .replace(/[_-]+/g, ' ')
+        .replace(/^./, letter => letter.toUpperCase());
+    }
+
+    function formatBytes(value) {
+      const bytes = Number(value);
+      if (!Number.isFinite(bytes) || bytes < 0) return '—';
+      if (bytes === 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+      const amount = bytes / Math.pow(1024, index);
+      const digits = index === 0 ? 0 : amount >= 100 ? 0 : amount >= 10 ? 1 : 2;
+      return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: digits }).format(amount)} ${units[index]}`;
+    }
+
+    function formatDate(value) {
+      if (!value) return '—';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      const formatted = new Intl.DateTimeFormat('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      }).format(date);
+      return `${formatted}
+${String(value)}`;
+    }
+
+    function formatInfoValue(value, key) {
+      if (value === null || value === undefined || value === '') return '—';
+      if (key === 'installedAt' || key === 'updatedAt') return formatDate(value);
+      if (key.endsWith('SizeBytes')) return `${formatBytes(value)}
+${Number(value).toLocaleString('en-US')} bytes`;
+      if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+      if (Array.isArray(value)) return value.length
+        ? value.map(item => typeof item === 'object' ? JSON.stringify(item) : String(item)).join(', ')
+        : '—';
+      if (typeof value === 'object') {
+        try { return JSON.stringify(value, null, 2); }
+        catch { return String(value); }
+      }
+      return String(value);
+    }
+
+    function normalizeAppInfo(app, fullInfo) {
+      if (!fullInfo || typeof fullInfo !== 'object') return { ...app };
+      const manifest = fullInfo.manifest && typeof fullInfo.manifest === 'object'
+        ? fullInfo.manifest
+        : {};
+      const normalized = { ...app, ...manifest, ...fullInfo };
+      delete normalized.manifest;
+      return normalized;
+    }
+
+    async function openAppInfo(app) {
+      closeMenu();
+      closeAppInfo();
+
+      const baseColor = tileColor(app);
+      const overlay = document.createElement('div');
+      overlay.className = 'settings-overlay';
+      overlay.innerHTML = `
+        <section class="settings-window app-info-window" role="dialog" aria-modal="true" aria-labelledby="appInfoTitle">
+          <header class="window-titlebar" style="background:${escapeHtml(baseColor)};color:${escapeHtml(readableText(baseColor))}">
+            <strong id="appInfoTitle">Application information</strong>
+            <button class="window-close" type="button" aria-label="Close">×</button>
+          </header>
+          <div class="app-info-content" aria-busy="true">
+            <div class="app-info-hero">
+              <div class="app-info-icon" style="--app-info-color:${escapeHtml(baseColor)};--app-info-foreground:${escapeHtml(readableText(baseColor))}" aria-hidden="true">${escapeHtml(initials(app.name))}</div>
+              <div>
+                <h2 data-app-info-name>${escapeHtml(app.name ||'Untitled')}</h2>
+                <p data-app-info-id>${escapeHtml(app.id || 'ID not specified')}</p>
+              </div>
+            </div>
+            <div class="app-info-loading">Getting the full manifest, installation dates and data sizes...</div>
+            <div data-app-info-body hidden></div>
+          </div>
+        </section>`;
+
+      appInfoOverlay = overlay;
+      document.body.append(overlay);
+      overlay.querySelector('.window-close').onclick = closeAppInfo;
+      overlay.addEventListener('pointerdown', event => {
+        if (event.target === overlay) closeAppInfo();
+      });
+
+      let details = { ...app };
+      let loadError = null;
+      try {
+        if (typeof launcher.getAppInfo !== 'function') {
+          throw new Error('The current runtime version does not provide launcher.getAppInfo().');
+        }
+        details = normalizeAppInfo(app, await launcher.getAppInfo(app.id));
+      } catch (error) {
+        loadError = error;
+      }
+
+      if (appInfoOverlay !== overlay) return;
+
+      const content = overlay.querySelector('.app-info-content');
+      const body = overlay.querySelector('[data-app-info-body]');
+      overlay.querySelector('[data-app-info-name]').textContent = details.name || app.name || 'Untitled';
+      overlay.querySelector('[data-app-info-id]').textContent = details.id || app.id || 'ID not specified';
+      overlay.querySelector('.app-info-icon').textContent = initials(details.name || app.name);
+      overlay.querySelector('.app-info-loading')?.remove();
+      content.setAttribute('aria-busy', 'false');
+      body.hidden = false;
+
+      if (loadError) {
+        const warning = document.createElement('div');
+        warning.className = 'app-info-warning';
+        warning.textContent = `Full details could not be obtained: ${loadError?.message || loadError?.code || 'unknown error'}. Below is the data from the application list.`;
+        body.append(warning);
+      }
+
+      const sizeFields = [
+        ['appSizeBytes', 'Application'],
+        ['dataSizeBytes', 'All data'],
+        ['publicDataSizeBytes', 'Public'],
+        ['privateDataSizeBytes', 'Private'],
+        ['secureDataSizeBytes', 'Secure']
+      ].filter(([key]) => Object.prototype.hasOwnProperty.call(details, key));
+
+      if (sizeFields.length) {
+        const summary = document.createElement('div');
+        summary.className = 'app-info-summary';
+        sizeFields.forEach(([key, label]) => {
+          const stat = document.createElement('div');
+          stat.className = 'app-info-stat';
+          const caption = document.createElement('span');
+          caption.textContent = label;
+          const value = document.createElement('strong');
+          value.textContent = formatBytes(details[key]);
+          stat.append(caption, value);
+          summary.append(stat);
+        });
+        body.append(summary);
+      }
+
+      const orderedKeys = [
+        ...APP_INFO_ORDER.filter(key => Object.prototype.hasOwnProperty.call(details, key)),
+        ...Object.keys(details).filter(key => !APP_INFO_ORDER.includes(key)).sort()
+      ];
+
+      if (!orderedKeys.length) {
+        const message = document.createElement('div');
+        message.className = 'app-info-empty';
+        message.textContent = 'Runtime did not transmit information about this application.';
+        body.append(message);
+      } else {
+        const section = document.createElement('section');
+        section.className = 'app-info-section';
+        const title = document.createElement('h3');
+        title.textContent = 'All details';
+        const grid = document.createElement('div');
+        grid.className = 'info-grid';
+
+        orderedKeys.forEach(key => {
+          const label = document.createElement('div');
+          label.className = 'label';
+          label.textContent = APP_INFO_LABELS[key] || humanizeKey(key);
+
+          const value = document.createElement('div');
+          value.className = 'app-info-value';
+          value.textContent = formatInfoValue(details[key], key);
+          grid.append(label, value);
+        });
+
+        section.append(title, grid);
+        body.append(section);
+
+        const raw = document.createElement('details');
+        raw.className = 'app-info-raw';
+        const summary = document.createElement('summary');
+        summary.textContent = 'Full runtime response in JSON';
+        const pre = document.createElement('pre');
+        try { pre.textContent = JSON.stringify(details, null, 2); }
+        catch { pre.textContent = String(details); }
+        raw.append(summary, pre);
+        body.append(raw);
+      }
+    }
+
+    function buildSettingsShell(info) {
+      const overlay = document.createElement('div');
+      overlay.className = 'settings-overlay';
+      overlay.innerHTML = `
+        <section class="settings-window" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+          <header class="window-titlebar">
+            <strong id="settingsTitle">Settings</strong>
+            <button class="window-close" type="button" aria-label="Close">×</button>
+          </header>
+          <div class="settings-layout">
+            <nav class="settings-nav" aria-label="Settings sections">
+              <button type="button" class="active" data-page="personalization">Personalization</button>
+              <button type="button" data-page="interfaces">Interfaces</button>
+              <button type="button" data-page="about">About the application</button>
+            </nav>
+            <div class="settings-content">
+              <section class="settings-page" data-settings-page="personalization">
+                <h2>Personalization</h2>
+                <p>Select the primary color for buttons, windows, and interface highlights. Application tile colors are assigned separately and saved.</p>
+                <div class="setting-group">
+                  <h3>Accent color</h3>
+                  <div class="swatches" id="accentSwatches"></div>
+                  <label class="custom-color">
+                    <input id="customAccent" type="color" value="${storedAccent()}" aria-label="Custom accent color">
+                    <span id="customAccentValue">${storedAccent().toUpperCase()}</span>
+                  </label>
+                </div>
+                <div class="setting-group">
+                  <h3>Number of columns: <span id="columnsCurrent">${storedColumns()}</span></h3>
+                  <div id="columnOptions" class="column-options" aria-label="Number of columns"></div>
+                  <p class="setting-hint">The setting is saved and applied to the main screen immediately.</p>
+                </div>
+              </section>
+
+              <section class="settings-page" data-settings-page="interfaces"hidden>
+                <h2>Interfaces</h2>
+                <p>Switch installed launcher interfaces or import new HTML/ZIP.</p>
+                <div id="interfaceList" class="interface-list"></div>
+                <div class="setting-group">
+                  <button id="importInterface" class="metro-button" type="button">Add interface</button>
+                </div>
+              </section>
+
+              <section class="settings-page" data-settings-page="about"hidden>
+                <h2>About the application</h2>
+                <p>Information about the current runtime and working folder.</p>
+                <div class="info-grid">
+                  <div class="label">Version</div><div>${escapeHtml(info.version ||'—')}</div>
+                  <div class="label">Platform</div><div>${escapeHtml(info.platform || '—')}</div>
+                  <div class="label">Applications</div><div>${escapeHtml(info.appsPath || '—')}</div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </section>`;
+      return overlay;
+    }
+
+    async function renderInterfaces() {
+      const root = document.querySelector('#interfaceList');
+      if (!root) return;
+      root.innerHTML = '<div class="interface-item"><div><strong>Loading...</strong></div></div>';
+
+      try {
+        const interfaces = await launcher.listInterfaces();
+        root.replaceChildren(...interfaces.map(item => {
+          const row = document.createElement('div');
+          row.className = 'interface-item' + (item.active ? 'active' : '');
+
+          const copy = document.createElement('div');
+          const title = document.createElement('strong');
+          const status = document.createElement('small');
+          title.textContent = item.name;
+          status.textContent = item.active ? 'Currently in use' : 'Available';
+          copy.append(title, status);
+
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'metro-button' + (item.active ? 'secondary' : '');
+          button.textContent = item.active ? 'Active' : 'Select';
+          button.disabled = !!item.active;
+          button.onclick = () => call(async () => {
+            await launcher.selectInterface(item.id);
+            location.reload();
+          });
+
+          row.append(copy, button);
+          return row;
+        }));
+      } catch (error) {
+        root.innerHTML = `<div class="interface-item"><div><strong>Failed to load</strong><small>${escapeHtml(error?.message || error?.code ||'')}</small></div></div>`;
+      }
+    }
+
+    async function openSettings() {
+      closeMenu();
+      closeSettings();
+      await loadInterfaceSettings();
+      const info = await launcher.getSettingsInfo();
+      settingsOverlay = buildSettingsShell(info || {});
+      document.body.append(settingsOverlay);
+
+      const swatches = settingsOverlay.querySelector('#accentSwatches');
+      PRESETS.forEach(color => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'swatch';
+        button.dataset.color = color;
+        button.style.setProperty('--swatch', color);
+        button.style.setProperty('--swatch-text', readableText(color));
+        button.setAttribute('aria-label', `Color ${color}`);
+        button.onclick = () => setAccent(color, true);
+        swatches.append(button);
+      });
+
+      const columnOptions = settingsOverlay.querySelector('#columnOptions');
+      for (let columns = MIN_COLUMNS; columns <= MAX_COLUMNS; columns++) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'column-option';
+        button.dataset.columns = String(columns);
+        button.textContent = String(columns);
+        button.setAttribute('aria-label', `${columns} ${declension(columns, ['column', 'column', 'columns'])}`);
+        button.onclick = () => setColumns(columns, true);
+        columnOptions.append(button);
+      }
+
+      setAccent(storedAccent(), false);
+      setColumns(storedColumns(), false);
+
+      settingsOverlay.querySelector('.window-close').onclick = closeSettings;
+      settingsOverlay.addEventListener('pointerdown', event => {
+        if (event.target === settingsOverlay) closeSettings();
+      });
+
+      settingsOverlay.querySelectorAll('.settings-nav button').forEach(button => {
+        button.onclick = () => {
+          settingsOverlay.querySelectorAll('.settings-nav button').forEach(item => item.classList.toggle('active', item === button));
+          settingsOverlay.querySelectorAll('[data-settings-page]').forEach(page => {
+            page.hidden = page.dataset.settingsPage !== button.dataset.page;
+          });
+          if (button.dataset.page === 'interfaces') renderInterfaces();
+        };
+      });
+
+      const custom = settingsOverlay.querySelector('#customAccent');
+      custom.oninput = () => setAccent(custom.value, false);
+      custom.onchange = () => setAccent(custom.value, true);
+
+      settingsOverlay.querySelector('#importInterface').onclick = () => call(async () => {
+        await launcher.importInterface();
+        await renderInterfaces();
+      });
+
+      settingsOverlay.querySelector('.settings-window').focus?.();
+    }
+
+    $('#addApp').onclick = () => call(async () => {
+      const result = await launcher.importApp();
+      await loadApps();
+      return result;
+    });
+
+    $('#more').onclick = event => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      popupMenu(rect.right, rect.bottom, [
+        ['Update', () => launcher.refresh().then(loadApps)],
+        ['Add an application', () => launcher.importApp().then(loadApps)],
+        ['Settings', openSettings]
+      ]);
+    };
+
+    addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      if (menu) {
+        closeMenu();
+        event.preventDefault();
+      } else if (appInfoOverlay) {
+        closeAppInfo();
+        event.preventDefault();
+      } else if (settingsOverlay) {
+        closeSettings();
+        event.preventDefault();
+      }
+    });
+
+    window.__launcherClosePopup = () => {
+      if (menu) {
+        closeMenu();
+        return true;
+      }
+      if (appInfoOverlay) {
+        closeAppInfo();
+        return true;
+      }
+      if (settingsOverlay) {
+        closeSettings();
+        return true;
+      }
+      return false;
+    };
+
+    async function boot() {
+      await loadInterfaceSettings();
+      setAccent(storedAccent(), false);
+      setColumns(storedColumns(), false);
+      await loadApps();
+    }
+
+    boot().catch(fail);
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+package com.example.miniapp.installer
+import com.example.miniapp.model.MiniAppManifest
+import com.example.miniapp.model.MiniAppPermission
+import java.io.File
+object RuntimeLimits { const val RUNTIME_VERSION="1.4.0"; const val MAX_ARCHIVE_SIZE_MB=20; const val MAX_UNPACKED_SIZE_MB=50; const val MAX_FILE_COUNT=1000; const val SUPPORTED_SDK_VERSION=2; const val MAX_VALUE_BYTES=64*1024; const val MAX_STORAGE_BYTES=5*1024*1024; const val MAX_READ_FILE_BYTES=5*1024*1024; const val MAX_WRITTEN_FILE_BYTES=10*1024*1024 }
+class InstallException(val code:String, message:String): Exception(message) { constructor(message:String):this("source_file_invalid",message) }
+object ManifestValidator { private val id=Regex("[A-Za-z0-9._-]+")
+ fun validate(m:MiniAppManifest,root:File){if(!id.matches(m.id))throw InstallException("source_file_invalid","Invalid app id");if(m.name.isBlank()||!SemVer.valid(m.version))throw InstallException("source_file_invalid","version must be SemVer");if(m.sdkVersion !in 1..RuntimeLimits.SUPPORTED_SDK_VERSION)throw InstallException("unsupported_sdk_version","Unsupported SDK version");m.minRuntimeVersion?.let{if(!SemVer.valid(it))throw InstallException("source_file_invalid","minRuntimeVersion must be SemVer")};if(!safePath(m.entry)||!File(root,m.entry).canonicalFile.startsWithin(root))throw InstallException("source_file_invalid","Invalid entry path");if(!File(root,m.entry).isFile)throw InstallException("source_file_invalid","Entry file does not exist");if(m.permissions.any{MiniAppPermission.fromWire(it)==null})throw InstallException("source_file_invalid","Unknown permission");m.network?.let { n -> if(!m.permissions.contains("network")||n.allow.isEmpty()||n.allow.any{!validNetworkOrigin(it)})throw InstallException("source_file_invalid","Invalid network configuration") }}
+ private fun validNetworkOrigin(value:String):Boolean { val match=Regex("^(https?)://(\\*\\.)?([A-Za-z0-9.-]+)(?::([0-9]{1,5}))?$").matchEntire(value)?:return false; val port=match.groupValues[4].toIntOrNull(); return port==null||port in 1..65535 }
+ fun safePath(path:String)=path.isNotBlank()&&!path.startsWith('/')&&!path.contains("\\")&&path.split('/').none{it==".."||it.isEmpty()}
+ private fun File.startsWithin(root:File)=path.startsWith(root.canonicalPath+File.separator)
+}
+object SemVer { private val pattern=Regex("^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$")
+ fun valid(value:String)=pattern.matches(value)
+ fun compare(left:String,right:String):Int { require(valid(left)&&valid(right)); val a=left.substringBefore('+').split('-',limit=2);val b=right.substringBefore('+').split('-',limit=2);val av=a[0].split('.').map{it.toInt()};val bv=b[0].split('.').map{it.toInt()};for(i in 0..2){val c=av[i].compareTo(bv[i]);if(c!=0)return c};if(a.size==1&&b.size==1)return 0;if(a.size==1)return 1;if(b.size==1)return -1;val ap=a[1].split('.');val bp=b[1].split('.');for(i in 0 until maxOf(ap.size,bp.size)){val x=ap.getOrNull(i);val y=bp.getOrNull(i);if(x==null)return -1;if(y==null)return 1;val xn=x.toLongOrNull();val yn=y.toLongOrNull();val c=when { xn!=null&&yn!=null->xn.compareTo(yn); xn!=null->-1; yn!=null->1; else->x.compareTo(y) };if(c!=0)return c};return 0 }
+}
