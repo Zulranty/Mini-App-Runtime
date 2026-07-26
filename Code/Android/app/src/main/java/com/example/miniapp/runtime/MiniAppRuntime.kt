@@ -21,7 +21,14 @@ class MiniAppRuntime(private val activity:Activity, private val web:WebView, pri
  private var lastUserGestureAt=0L
  val bridge=JsBridge { raw->activity.runOnUiThread { dispatch(raw) } }
  init { web.setOnTouchListener { _, event -> if(event.action==android.view.MotionEvent.ACTION_DOWN)markUserGesture();false }; startNetworkMonitoring() }
- private fun send(response:BridgeResponse)=web.evaluateJavascript("window.__miniRuntimeResolve(${JSONObject.quote(response.json())});",null)
+ private fun send(response:BridgeResponse){
+  val script="window.__miniRuntimeResolve(${JSONObject.quote(response.json())});"
+  activity.runOnUiThread {
+   if(!activity.isFinishing&&!activity.isDestroyed){
+    runCatching { web.evaluateJavascript(script,null) }
+   }
+  }
+ }
  fun completeExternal(id:String,result:Any?,error:ApiException?){send(if(error==null) BridgeResponse(id,true,result) else BridgeResponse(id,false,errorCode=error.code,errorMessage=error.message))}
  private fun dispatch(raw:String){val r=try{BridgeRequest.parse(raw)}catch(e:Exception){send(BridgeResponse("",false,errorCode="invalid_request",errorMessage="Invalid request"));return};try{if(r.method=="permissions.request"){requireUserGesture();requestPermission(r);return};if(r.method=="notifications.requestPermission"){requireUserGesture();if(!manifest.permissions.contains("notifications"))throw ApiException("permission_not_declared","Permission notifications is not declared");requestNotifications(r.id);return};if(r.method in setOf("files.pick","files.pickMultiple","files.pickDirectory","clipboard.readText","system.openUrl","system.openFile","system.openSettings"))requireUserGesture();permissionFor(r.method)?.let{ensurePermission(it,r)};if(r.method=="network.request"){Thread { try{send(BridgeResponse(r.id,true,NetworkApi.request(manifest.network,r.params)))}catch(e:ApiFailure){send(BridgeResponse(r.id,false,errorCode=e.code,errorMessage=e.message))} }.start();return};val pub=isPublic(r);val result=when(r.method){
   "app.getInfo"->JSONObject().put("id",manifest.id).put("name",manifest.name).put("version",manifest.version).put("sdkVersion",manifest.sdkVersion)

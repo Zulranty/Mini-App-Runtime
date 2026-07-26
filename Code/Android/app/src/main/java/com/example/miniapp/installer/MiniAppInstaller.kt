@@ -23,7 +23,7 @@ class MiniAppInstaller(private val context: Context) {
             val existing = existingDir?.let { SharedMiniAppStore.readManifest(it) }
             // Re-importing the same version can deliver a corrected package without
             // a version bump. Older versions remain rejected.
-            if (existing != null && SharedMiniAppStore.compareVersions(manifest.version, existing.version) < 0)
+            if (existing != null && SemVer.compare(manifest.version, existing.version) < 0)
                 return@synchronized InstallOutcome(existing, false)
             val target = existingDir ?: File(SharedMiniAppStore.ensureRoot(), SharedMiniAppStore.folderForId(manifest.id))
             replaceAtomically(staging, target, source, ext)
