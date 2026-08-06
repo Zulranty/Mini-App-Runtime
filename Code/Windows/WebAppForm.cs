@@ -115,7 +115,7 @@ internal sealed class WebAppView : UserControl
                 Respond(id, true, peerResult, null, null); return;
             }
             var permission = PermissionFor(method);
-            if (permission is not null) RequirePermission(permission);
+            if (permission is not null && !IsReadOnlyAppFileRead(method, parameters)) RequirePermission(permission);
             if (method == "network.request") { _ = NetworkRequestAsync(id, parameters); return; }
             JsonNode? result = method switch
             {
@@ -392,6 +392,12 @@ internal sealed class WebAppView : UserControl
             node["id"] = id; entries.Add(node);
         }
         return new JsonObject { ["entries"] = entries, ["nextCursor"] = null };
+    }
+    private bool IsReadOnlyAppFileRead(string method, JsonObject parameters)
+    {
+        if (method is not ("files.getInfo" or "files.readText" or "files.readBase64" or "files.readChunk" or "files.readTextChunk" or "files.release")) return false;
+        var id = parameters["id"]?.GetValue<string>() ?? parameters["key"]?.GetValue<string>();
+        return id is not null && readOnlyFiles.Contains(id);
     }
     private JsonNode PickDirectory()
     {

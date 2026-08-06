@@ -23,7 +23,7 @@
   </Target>
   <ItemGroup>
     <Compile Include="..\..\Code\Windows\**\*.cs" />
-    <Content Include="..\..\Code\Framework\shared\web\runtime.js" Link="runtime.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\Code\Framework\shared\web\runtime.js" Link="runtime.js" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
     <Content Include="..\..\Code\Framework\shared\launcher-runtime.js" Link="launcher-runtime.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\DefaultContent\Interface\**\*" Link="Interface\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\DefaultContent\MiniApps\**\*" Link="MiniApps\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
