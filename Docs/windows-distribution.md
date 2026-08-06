@@ -12,6 +12,8 @@ build\Scripts\BuildAll.cmd
 
 `BuildWindows.cmd` creates `Output/Windows/MiniAppsSetup.exe`. `BuildAndroid.cmd` creates the release APK at `Output/Android/MiniApps.apk`. `BuildAll.cmd` runs both scripts; none of these scripts creates an Android debug APK.
 
+When a build is launched interactively and fails, its script leaves the console open with the exit code visible. Set `MINIAPPS_NO_PAUSE=1` when invoking an individual script from automation. `BuildAll.cmd` suppresses duplicate pauses in its child scripts and pauses once for the combined failure.
+
 Android uses the committed Gradle Wrapper in `build/Android`, which downloads Gradle 8.14 on its first run. Windows restores NuGet packages automatically when its cache is absent. The first build therefore needs internet access.
 
 Before building, the scripts check their prerequisites: Android requires JDK 17+, Android SDK Platform 35, and the committed Wrapper; Windows requires .NET SDK 8+ and Inno Setup 6+.
