@@ -249,6 +249,7 @@ clipboard.read
 files.directory
 system.open
 haptics
+local.peers
 ```
 
 The `icon` field can point to a PNG/JPG file inside the mini-app folder:
@@ -398,6 +399,72 @@ The trusted launcher UI—not a mini-app—owns backup selection, restore approv
 The launcher permission manager displays all manifest-declared permissions, including `network`, `notifications`, `clipboard.read`, `files.directory`, `system.open`, and `haptics`. When an app update adds one, its decision is left at `prompt`; when an update removes one, the stored decision is deleted. Decisions remain isolated by `manifest.id`.
 
 Deleting an Android mini-app cancels its scheduled notifications and removes its persisted directory grants, notification records, permission decisions, public source, and private data. Updating an app with the same `manifest.id` preserves its notification records.
+
+
+# Local peer connections
+
+`mini.peers` is the reserved opaque bridge for local device discovery and peer
+connections. It is intentionally separate from `mini.network`: mini-app code
+does not receive an IP address, network interface, port, socket, MAC address,
+SSID, or a host filesystem path.
+
+## Permission and availability
+
+An app normally declares `local.peers` in its manifest and uses the normal
+`mini.permissions.query('local.peers')` / `request('local.peers')` flow. The
+current development build temporarily grants this permission automatically so
+that transport testing is not blocked by a WebView permission prompt. This
+bypass is limited to `local.peers` and must be removed before release.
+Use `mini.runtime.supports('peers')` before displaying peer controls: this
+keeps apps compatible with Runtime versions that do not supply a native peer
+transport.
+
+```js
+if (await mini.runtime.supports('peers')) {
+  await mini.peers.startDiscovery();
+  const peers = await mini.peers.list();
+}
+```
+
+## JavaScript contract
+
+The bridge provides `startDiscovery`, `stopDiscovery`, `list`, `connect`,
+`disconnect`, `connections`, `openChannel`, `closeChannel`, `sendMessage`,
+`sendFile`, `acceptFile`, `rejectFile`, `cancelTransfer`, and `transfers`.
+All methods are Promise-based and all options are JSON-compatible. Peer events
+are delivered through `mini.events`: `peers.changed`,
+`peers.connectionRequested`, `peers.connectionChanged`, `peers.channelOpened`,
+`peers.channelClosed`, `peers.message`, `peers.fileOffered`,
+`peers.transferProgress`, `peers.transferCompleted`,
+`peers.transferCancelled`, and `peers.transferFailed`.
+
+The intended transport is mDNS/DNS-SD discovery of `_miniapps-peer._tcp.local`
+and a framed local TCP connection. When a mini-app calls `startDiscovery` again
+(the bundled app does this from **Refresh devices**), hosts also send a bounded
+UDP fallback probe to addresses `.1` through `.200` of every active IPv4
+subnet. The `MAPD1?` probe is answered unicast with a `MAPD1!` device record;
+the record contains only the information needed to establish the existing TCP
+connection. Logical channels are owned by
+`manifest.id + channel name`; hosts must never deliver a channel's messages or
+files to another mini-app. File transfers use the existing opaque file and
+directory handles, native streaming, bounded chunks, and a final SHA-256
+verification; Base64 is not part of the peer-transfer protocol.
+
+The first version deliberately does not use TLS/HTTPS. Pairing confirmation is
+therefore required before a peer connection becomes usable, and users must not
+transfer sensitive data on an untrusted or public Wi-Fi network.
+
+Android and Windows encode each post-handshake channel frame as a four-byte
+big-endian UTF-8 JSON length followed by the JSON payload. Frames are capped at
+64 KiB. The current channel operations use `channel.open`, `channel.close`, and
+`message` payloads that carry the owning `appId`; a host accepts an incoming
+payload only while that manifest has an active peer listener.
+
+## Bundled demonstration
+
+`DefaultContent/MiniApps/peer-transfer.html` is a single-file HTML demonstration mini-app. It
+checks capabilities, requests `local.peers` only from its explicit button,
+lists discovered devices, opens a default channel, and displays peer messages.
 
 
 # Mini App Runtime documentation
@@ -578,6 +645,8 @@ New manifest permissions are `network`, `notifications`, `clipboard.read`, `file
 
 File handles remain opaque and scoped to one mini-app. Both hosts support `files.pickMultiple`, `files.getInfo`, `files.readChunk`, `files.readTextChunk`, and `files.releaseMany`; chunks are bounded to 1 MiB. Both hosts also support user-selected directory handles: `pickDirectory`, `listDirectory`, `openInDirectory`, `createInDirectory`, `writeChunk`, `flush`, `persistDirectory`, `restoreDirectory`, and `forgetDirectory`. Directory paths must be relative and cannot contain traversal segments. The legacy whole-file methods retain their existing 5 MiB guard.
 
+`files.getAppDirectory()` returns an opaque, read-only handle for the current mini-app's installed directory. Pass that handle to `files.listAppDirectory(id, { limit })` to list up to 200 immediate entries. Folder entries return another opaque handle which can be listed recursively; file entries return regular opaque file IDs suitable for `getInfo`, `readText`, `readBase64`, `readChunk`, and `readTextChunk`. The API needs no permission, returns no OS path, follows no links outside the installed directory, and rejects writes to these file IDs with `file_read_only`.
+
 Windows supports the same directory-handle methods. A persisted directory stores its host path privately under the user's runtime data; JavaScript receives only a new opaque directory ID after restoration. Chunk writes append at most 1 MiB and flush synchronously before resolving.
 
 Android supports `mini.notifications.requestPermission`, `schedule`, `cancel`, `get`, `list`, and `cancelAll`. `requestPermission` uses Android's `POST_NOTIFICATIONS` prompt on Android 13+. Records are private to the manifest ID and retained after the mini-app runtime closes. Supported schedules are one-time ISO-8601 `at` timestamps, daily/weekly local-time schedules, and `interval` schedules from 15 minutes to seven days. Records are re-armed after device boot. Android alarm delivery is best-effort and system power policies can delay it. Windows notifications remain feature-unavailable.
@@ -620,6 +689,8 @@ The controlled network API is separate from browser `fetch`. Its manifest allowl
 
 File IDs are capabilities, not paths. They are opaque, app-scoped, and invalid after release or runtime destruction. System opening receives only an opaque handle or a validated URL; no filesystem path is returned to JavaScript. Clipboard reads need a separate permission. Platform dialogs render supplied strings as text rather than HTML.
 
+The installed-directory capability is read-only and scoped to the current mini-app. It can enumerate only children of that app's installed directory and creates opaque child handles; resolved links that lead outside the directory are not exposed. It requires no user prompt because it cannot access another app or write bundled files.
+
 Android records the last native WebView touch and requires it to be recent (one second) before permission prompts, file and directory pickers, clipboard reads, and system opening. This check is host-side; a mini-app cannot satisfy it by adding a bridge parameter.
 
 Windows applies the same one-second host-side check from native WebView mouse or keyboard input before permission prompts, file pickers, clipboard reads, and system opening.
@@ -638,6 +709,8 @@ Build a compact framework-dependent executable:
 ```powershell
 .\build\Windows\publish-windows.ps1
 ```
+
+`build\Scripts\BuildWindows.cmd` restores the Windows SDK reference pack on every run before publishing. This avoids stale cached NuGet assets that can otherwise cause `NETSDK1112` when a required reference pack has not been downloaded yet.
 
 The distributable keeps `MiniApps.exe`, `MiniApps`, `Interface`, and `Config` directly in `Output/Windows`. `Data/WebView2` contains the WebView2 loader and its XML documentation files; the WebView2 profile is stored in `Data/WebView2/UserData`. Window sizes, the selected launcher interface, and mini-app permissions are stored in `Config`; permission files use mini-app names. Private and secure mini-app storage remains in `Data/User`, while public storage remains inside the mini-app directory as `storage.json`.
 
@@ -701,6 +774,8 @@ build\Scripts\BuildAll.cmd
 ```
 
 `BuildWindows.cmd` creates `Output/Windows/MiniAppsSetup.exe`. `BuildAndroid.cmd` creates the release APK at `Output/Android/MiniApps.apk`. `BuildAll.cmd` runs both scripts; none of these scripts creates an Android debug APK.
+
+When a build is launched interactively and fails, its script leaves the console open with the exit code visible. Set `MINIAPPS_NO_PAUSE=1` when invoking an individual script from automation. `BuildAll.cmd` suppresses duplicate pauses in its child scripts and pauses once for the combined failure.
 
 Android uses the committed Gradle Wrapper in `build/Android`, which downloads Gradle 8.14 on its first run. Windows restores NuGet packages automatically when its cache is absent. The first build therefore needs internet access.
 

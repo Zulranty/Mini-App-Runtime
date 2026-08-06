@@ -39,7 +39,7 @@ internal sealed record MiniManifest(string Id, string Name, string Version, int 
         var entry = node["entry"]?.GetValue<string>() ?? "index.html";
         if (!SafeRelativePath(entry)) throw new InvalidDataException("Unsafe entry path");
         var permissions = node["permissions"]?.AsArray().Select(x => x?.GetValue<string>() ?? "").Where(x => x.Length > 0).ToHashSet() ?? [];
-        var allowedPermissions = new HashSet<string> { "storage", "clipboard.write", "clipboard.read", "files.pick", "files.save", "files.directory", "share", "secureStorage", "network", "notifications", "system.open", "haptics" };
+        var allowedPermissions = new HashSet<string> { "storage", "clipboard.write", "clipboard.read", "files.pick", "files.save", "files.directory", "share", "secureStorage", "network", "notifications", "system.open", "haptics", "local.peers" };
         if (!permissions.IsSubsetOf(allowedPermissions)) throw new InvalidDataException("Unknown permission");
         var sdkVersion = node["sdkVersion"]?.GetValue<int>() ?? 1;
         if (sdkVersion is < 1 or > 2) throw new ApiError("unsupported_sdk_version", "Unsupported SDK version");

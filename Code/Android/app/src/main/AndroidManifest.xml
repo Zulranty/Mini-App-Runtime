@@ -7,6 +7,9 @@
     <!-- Required by the controlled network API and its connectivity observer. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- DNS-SD/mDNS discovery uses the local Wi-Fi multicast path only while peer discovery is active. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
     <application android:theme="@style/AppTheme" android:label="Mini Apps" android:allowBackup="false" android:usesCleartextTraffic="false">
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.shareprovider" android:exported="false" android:grantUriPermissions="true">

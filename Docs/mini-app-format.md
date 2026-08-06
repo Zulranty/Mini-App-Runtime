@@ -63,6 +63,7 @@ clipboard.read
 files.directory
 system.open
 haptics
+local.peers
 ```
 
 The `icon` field can point to a PNG/JPG file inside the mini-app folder:
