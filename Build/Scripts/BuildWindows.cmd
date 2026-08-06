@@ -3,19 +3,27 @@ setlocal
 cd /d "%~dp0..\.."
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%CD%\build\Scripts\Test-Prerequisites.ps1" -Target Windows
-if errorlevel 1 exit /b %errorlevel%
+if errorlevel 1 goto Fail
 
 set "OUTPUT_DIR=%CD%\Output\Windows"
 set "PROJECT_FILE=%CD%\build\Windows\MiniAppRuntime.Windows.csproj"
-set "ASSETS_FILE=%CD%\Cache\Windows\obj\project.assets.json"
-if exist "%ASSETS_FILE%" goto BuildWindows
-
 echo Restoring Windows packages...
+rem Restore on every build: the cached assets file can reference a Windows SDK
+rem reference pack that was never downloaded (NETSDK1112).
 dotnet restore "%PROJECT_FILE%" --runtime win-x64
-if errorlevel 1 exit /b %errorlevel%
+if errorlevel 1 goto Fail
 
 :BuildWindows
 echo Building Windows installer...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%CD%\build\Windows\publish-installer.ps1" -OutputDirectory "%OUTPUT_DIR%" -NoRestore
-if errorlevel 1 exit /b %errorlevel%
+if errorlevel 1 goto Fail
 echo Windows installer: "%OUTPUT_DIR%\MiniAppsSetup.exe"
+exit /b 0
+
+:Fail
+set "BUILD_EXIT_CODE=%errorlevel%"
+if "%BUILD_EXIT_CODE%"=="0" set "BUILD_EXIT_CODE=1"
+echo.
+echo Windows build failed with exit code %BUILD_EXIT_CODE%.
+if not defined MINIAPPS_NO_PAUSE pause
+exit /b %BUILD_EXIT_CODE%

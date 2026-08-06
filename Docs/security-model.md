@@ -12,6 +12,8 @@ The controlled network API is separate from browser `fetch`. Its manifest allowl
 
 File IDs are capabilities, not paths. They are opaque, app-scoped, and invalid after release or runtime destruction. System opening receives only an opaque handle or a validated URL; no filesystem path is returned to JavaScript. Clipboard reads need a separate permission. Platform dialogs render supplied strings as text rather than HTML.
 
+The installed-directory capability is read-only and scoped to the current mini-app. It can enumerate only children of that app's installed directory and creates opaque child handles; resolved links that lead outside the directory are not exposed. It requires no user prompt because it cannot access another app or write bundled files.
+
 Android records the last native WebView touch and requires it to be recent (one second) before permission prompts, file and directory pickers, clipboard reads, and system opening. This check is host-side; a mini-app cannot satisfy it by adding a bridge parameter.
 
 Windows applies the same one-second host-side check from native WebView mouse or keyboard input before permission prompts, file pickers, clipboard reads, and system opening.

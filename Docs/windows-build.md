@@ -10,6 +10,8 @@ Build a compact framework-dependent executable:
 .\build\Windows\publish-windows.ps1
 ```
 
+`build\Scripts\BuildWindows.cmd` restores the Windows SDK reference pack on every run before publishing. This avoids stale cached NuGet assets that can otherwise cause `NETSDK1112` when a required reference pack has not been downloaded yet.
+
 The distributable keeps `MiniApps.exe`, `MiniApps`, `Interface`, and `Config` directly in `Output/Windows`. `Data/WebView2` contains the WebView2 loader and its XML documentation files; the WebView2 profile is stored in `Data/WebView2/UserData`. Window sizes, the selected launcher interface, and mini-app permissions are stored in `Config`; permission files use mini-app names. Private and secure mini-app storage remains in `Data/User`, while public storage remains inside the mini-app directory as `storage.json`.
 
 ## Offline Windows installer

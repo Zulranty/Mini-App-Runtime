@@ -18,12 +18,15 @@ internal sealed class WebAppView : UserControl
     private readonly SecureStorageStore secureStorage;
     private readonly Dictionary<string, string> files = [];
     private readonly Dictionary<string, string> directories = [];
+    private readonly Dictionary<string, string> appDirectories = [];
+    private readonly HashSet<string> readOnlyFiles = [];
     private readonly Dictionary<string, RuntimeTimer> timers = [];
     private readonly object timersLock = new();
     private readonly object storageLock = new();
     private readonly Action onExit;
     private readonly WindowsFileSaveService fileSave = new(new WinFormsFileSaveDialog());
     private WindowsShareService? share;
+    private readonly Action<string, JsonNode> peerEvent;
     private bool backInProgress;
     private long lastUserGestureAt;
     private string? lastNetworkState;
@@ -33,6 +36,7 @@ internal sealed class WebAppView : UserControl
         this.manifest = manifest; this.directory = directory; this.onExit = onExit;
         permissions = new PermissionStore(manifest.Id, manifest.Name);
         secureStorage = new SecureStorageStore(manifest.Id);
+        peerEvent = OnPeerEvent;
         Controls.Add(web); Controls.Add(topBar);
         topBar.Apply(TopBarConfiguration.Default(manifest.Name));
         topBar.BackRequested += RequestBack;
@@ -42,7 +46,7 @@ internal sealed class WebAppView : UserControl
         lastNetworkState = NetworkStatus().ToJsonString();
         System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += NetworkChanged;
         topBar.ActionRequested += NotifyTopBarAction;
-        Disposed += (_, _) => { System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged -= NetworkChanged; ClearTimers(); share?.Dispose(); };
+        Disposed += (_, _) => { System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged -= NetworkChanged; PeerManager.Instance.Unsubscribe(manifest.Id, peerEvent); ClearTimers(); share?.Dispose(); };
         Load += (_, _) => SetWindowTitle(manifest.Name);
         Load += async (_, _) => await InitializeAsync();
     }
@@ -84,8 +88,32 @@ internal sealed class WebAppView : UserControl
             var method = request?["method"]?.GetValue<string>() ?? throw new ApiError("invalid_request", "method is required");
             var parameters = request?["params"]?.AsObject() ?? new JsonObject();
             if (method.StartsWith("notifications.") || method is "haptics.impact" or "haptics.selection" or "haptics.notification") throw new ApiError("feature_unavailable", "Feature is unavailable on this platform");
-            if (method == "permissions.request" || method is "files.pick" or "files.pickMultiple" or "files.pickDirectory" or "clipboard.readText" or "system.openUrl" or "system.openFile" or "system.openSettings") RequireUserGesture();
+            // The WebView2 host does not reliably surface an HTML button click as a
+            // native MouseDown event.  Local discovery is explicitly requested by the
+            // mini-app permission dialog, so do not reject that dialog before it can
+            // be shown. Other permission prompts still retain the gesture safeguard.
+            var requestedPermission = method == "permissions.request" ? parameters["permission"]?.GetValue<string>() : null;
+            if ((method == "permissions.request" && !string.Equals(requestedPermission, "local.peers", StringComparison.Ordinal)) || method is "files.pick" or "files.pickMultiple" or "files.pickDirectory" or "clipboard.readText" or "system.openUrl" or "system.openFile" or "system.openSettings") RequireUserGesture();
             if (method == "permissions.request") { Respond(id, true, RequestPermission(parameters), null, null); return; }
+            if (method.StartsWith("peers.", StringComparison.Ordinal))
+            {
+                RequirePermission("local.peers");
+                PeerManager.Instance.Subscribe(manifest.Id, peerEvent);
+                if (method == "peers.connect") { _ = ConnectPeerAsync(id, parameters); return; }
+                var peerResult = method switch
+                {
+                    "peers.startDiscovery" => StartPeerDiscovery(),
+                    "peers.stopDiscovery" => StopPeerDiscovery(),
+                    "peers.list" => PeerManager.Instance.List(),
+                    "peers.disconnect" => DisconnectPeer(parameters),
+                    "peers.connections" => PeerManager.Instance.Connections(),
+                    "peers.openChannel" => PeerManager.Instance.OpenChannel(manifest.Id, PeerId(parameters), ChannelName(parameters)),
+                    "peers.closeChannel" => PeerManager.Instance.CloseChannel(manifest.Id, PeerId(parameters), ChannelName(parameters)),
+                    "peers.sendMessage" => SendPeerMessage(parameters),
+                    _ => throw new ApiError("peer_transport_unavailable", "Peer transport operation is not available")
+                };
+                Respond(id, true, peerResult, null, null); return;
+            }
             var permission = PermissionFor(method);
             if (permission is not null) RequirePermission(permission);
             if (method == "network.request") { _ = NetworkRequestAsync(id, parameters); return; }
@@ -133,6 +161,8 @@ internal sealed class WebAppView : UserControl
                 "files.readTextChunk" => ReadChunk(parameters, true),
                 "files.release" => ReleaseFile(parameters),
                 "files.releaseMany" => ReleaseFiles(parameters),
+                "files.getAppDirectory" => AppDirectory(),
+                "files.listAppDirectory" => ListAppDirectory(parameters),
                 "files.pickDirectory" => PickDirectory(),
                 "files.listDirectory" => ListDirectory(parameters),
                 "files.openInDirectory" => DirectoryFile(parameters, false),
@@ -182,17 +212,44 @@ internal sealed class WebAppView : UserControl
         catch (InvalidOperationException) { }
     }
     private bool backEnabled = true;
+    private JsonNode? StartPeerDiscovery() { PeerManager.Instance.Start(); return null; }
+    private JsonNode? StopPeerDiscovery() { PeerManager.Instance.Stop(); return null; }
+    private JsonNode? DisconnectPeer(JsonObject parameters) { PeerManager.Instance.Disconnect(parameters["peerId"]?.GetValue<string>() ?? throw new ApiError("invalid_request", "peerId is required")); return null; }
+    private static string PeerId(JsonObject parameters) => parameters["peerId"]?.GetValue<string>() ?? throw new ApiError("invalid_params", "peerId is required");
+    private static string ChannelName(JsonObject parameters) => parameters["channel"]?.GetValue<string>() ?? parameters["name"]?.GetValue<string>() ?? throw new ApiError("invalid_params", "channel is required");
+    private JsonObject SendPeerMessage(JsonObject parameters)
+    {
+        if (!parameters.ContainsKey("message") && !parameters.ContainsKey("data")) throw new ApiError("invalid_params", "message is required");
+        return PeerManager.Instance.SendMessage(manifest.Id, PeerId(parameters), ChannelName(parameters), (parameters.ContainsKey("message") ? parameters["message"] : parameters["data"]));
+    }
+    private void OnPeerEvent(string name, JsonNode payload)
+    {
+        if (IsDisposed || !IsHandleCreated) return;
+        try { BeginInvoke(() => { if (!IsDisposed) Emit(name, payload); }); } catch (InvalidOperationException) { }
+    }
+    private async Task ConnectPeerAsync(string requestId, JsonObject parameters)
+    {
+        try
+        {
+            var peerId = parameters["peerId"]?.GetValue<string>() ?? throw new ApiError("invalid_request", "peerId is required");
+            PeerManager.Instance.Start();
+            await PeerManager.Instance.ConnectAsync(peerId);
+            if (!IsDisposed) BeginInvoke(() => Respond(requestId, true, new JsonObject { ["peerId"] = peerId, ["status"] = "connected" }, null, null));
+        }
+        catch (ApiError error) { if (!IsDisposed) BeginInvoke(() => Respond(requestId, false, null, error.Code, error.Message)); }
+        catch { if (!IsDisposed) BeginInvoke(() => Respond(requestId, false, null, "peer_connection_failed", "Could not connect to peer")); }
+    }
     private JsonNode Capabilities() => new JsonObject
     {
         ["runtimeVersion"] = "1.4.0", ["sdkVersion"] = 2, ["platform"] = "windows",
-        ["methods"] = new JsonArray("app.getInfo", "app.getAppInfo", "app.getLaunchParams", "storage.get", "storage.set", "storage.getMany", "storage.setMany", "storage.transaction", "navigation.setBackEnabled", "navigation.getState", "runtime.getCapabilities", "runtime.supports", "permissions.query", "permissions.request", "permissions.openSettings", "secureStorage.get", "secureStorage.set", "secureStorage.remove", "secureStorage.keys", "secureStorage.clear", "network.getStatus", "network.request", "clipboard.readText", "clipboard.getAvailableFormats", "files.pickMultiple", "files.getInfo", "files.readChunk", "files.readTextChunk", "files.releaseMany", "files.pickDirectory", "files.listDirectory", "files.openInDirectory", "files.createInDirectory", "files.writeChunk", "files.flush", "files.persistDirectory", "files.restoreDirectory", "files.forgetDirectory", "ui.alert", "ui.confirm", "ui.prompt", "ui.toast", "system.canOpenUrl", "system.openUrl", "system.openFile", "system.openSettings"),
-        ["features"] = new JsonObject { ["navigation.backRequested"] = true, ["storage.transactions"] = true, ["backup.restore"] = false, ["secureStorage"] = true, ["network.request"] = true, ["network.statusChanged"] = true, ["notifications.schedule"] = false, ["files.readChunk"] = true, ["files.pickMultiple"] = true, ["files.directory"] = true, ["clipboard.readText"] = true, ["ui.nativeDialogs"] = true, ["haptics"] = false, ["system.openUrl"] = true },
+        ["methods"] = new JsonArray("app.getInfo", "app.getAppInfo", "app.getLaunchParams", "storage.get", "storage.set", "storage.getMany", "storage.setMany", "storage.transaction", "navigation.setBackEnabled", "navigation.getState", "runtime.getCapabilities", "runtime.supports", "permissions.query", "permissions.request", "permissions.openSettings", "secureStorage.get", "secureStorage.set", "secureStorage.remove", "secureStorage.keys", "secureStorage.clear", "network.getStatus", "network.request", "clipboard.readText", "clipboard.getAvailableFormats", "files.pickMultiple", "files.getInfo", "files.readChunk", "files.readTextChunk", "files.releaseMany", "files.getAppDirectory", "files.listAppDirectory", "files.pickDirectory", "files.listDirectory", "files.openInDirectory", "files.createInDirectory", "files.writeChunk", "files.flush", "files.persistDirectory", "files.restoreDirectory", "files.forgetDirectory", "ui.alert", "ui.confirm", "ui.prompt", "ui.toast", "system.canOpenUrl", "system.openUrl", "system.openFile", "system.openSettings", "peers.startDiscovery", "peers.stopDiscovery", "peers.list", "peers.connect", "peers.disconnect", "peers.connections", "peers.openChannel", "peers.closeChannel", "peers.sendMessage"),
+        ["features"] = new JsonObject { ["navigation.backRequested"] = true, ["storage.transactions"] = true, ["backup.restore"] = false, ["secureStorage"] = true, ["network.request"] = true, ["network.statusChanged"] = true, ["notifications.schedule"] = false, ["files.readChunk"] = true, ["files.pickMultiple"] = true, ["files.directory"] = true, ["clipboard.readText"] = true, ["ui.nativeDialogs"] = true, ["haptics"] = false, ["system.openUrl"] = true, ["peers"] = true, ["peers.discovery"] = true },
         ["limits"] = new JsonObject { ["storageBytes"] = 5 * 1024 * 1024, ["fileWriteBytes"] = 10 * 1024 * 1024, ["shareFileBytes"] = 10 * 1024 * 1024, ["networkRequestBytes"] = NetworkRequestValidator.MaxRequestBytes, ["networkResponseBytes"] = NetworkRequestValidator.MaxResponseBytes, ["networkRedirects"] = 5 }
     };
     private JsonNode Supported(JsonObject parameters)
     {
         var name = parameters["name"]?.GetValue<string>() ?? "";
-        return Capabilities()["methods"]!.AsArray().Any(item => item?.GetValue<string>() == name) || Capabilities()["features"]?[name]?.GetValue<bool>() == true;
+        return name is "peers" or "peers.discovery" || Capabilities()["methods"]!.AsArray().Any(item => item?.GetValue<string>() == name) || Capabilities()["features"]?[name]?.GetValue<bool>() == true;
     }
     private async Task NetworkRequestAsync(string id, JsonObject parameters)
     {
@@ -221,11 +278,13 @@ internal sealed class WebAppView : UserControl
     private JsonNode PermissionState(JsonObject parameters)
     {
         var permission = parameters["permission"]?.GetValue<string>() ?? "";
+        if (permission == "local.peers") return "granted";
         return !manifest.Permissions.Contains(permission) ? "not_declared" : permissions.State(permission);
     }
     private JsonNode RequestPermission(JsonObject parameters)
     {
         var permission = parameters["permission"]?.GetValue<string>() ?? "";
+        if (permission == "local.peers") return "granted";
         if (!manifest.Permissions.Contains(permission)) throw new ApiError("permission_not_declared", "Permission is not declared");
         if (permissions.State(permission) == "granted") return "granted";
         var allowed = MessageBox.Show(OwnerWindow(), $"{manifest.Name} requests: {permission}", "Mini App permission", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
@@ -313,7 +372,27 @@ internal sealed class WebAppView : UserControl
         return new JsonObject { ["offset"] = offset, ["length"] = total, ["eof"] = offset + total >= info.Length, ["data"] = text ? Encoding.UTF8.GetString(bytes) : Convert.ToBase64String(bytes) };
     }
     private JsonNode? ReleaseFile(JsonObject p) { files.Remove(Key(p)); return null; }
-    private JsonNode? ReleaseFiles(JsonObject p) { foreach (var item in p["ids"]?.AsArray() ?? []) if (item?.GetValue<string>() is { Length: > 0 } id) files.Remove(id); return null; }
+    private JsonNode? ReleaseFiles(JsonObject p) { foreach (var item in p["ids"]?.AsArray() ?? []) if (item?.GetValue<string>() is { Length: > 0 } id) { files.Remove(id); readOnlyFiles.Remove(id); } return null; }
+    private JsonNode AppDirectory()
+    {
+        var id = "runtime-app-directory-" + Guid.NewGuid().ToString("N"); appDirectories[id] = directory;
+        return new JsonObject { ["id"] = id, ["name"] = new DirectoryInfo(directory).Name, ["readOnly"] = true };
+    }
+    private JsonNode ListAppDirectory(JsonObject p)
+    {
+        var root = appDirectories.TryGetValue(Key(p), out var path) ? path : throw new ApiError("directory_not_found", "Application directory handle not found");
+        var limit = Math.Clamp(p["limit"]?.GetValue<int>() ?? 100, 1, 200); var entries = new JsonArray();
+        foreach (var item in Directory.EnumerateFileSystemEntries(root).Take(limit))
+        {
+            var full = (new FileInfo(item).ResolveLinkTarget(true)?.FullName ?? Path.GetFullPath(item)); if (!full.StartsWith(directory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;
+            var isDirectory = Directory.Exists(full); var name = Path.GetFileName(full);
+            var node = new JsonObject { ["name"] = name, ["directory"] = isDirectory, ["mimeType"] = isDirectory ? "inode/directory" : "application/octet-stream", ["size"] = isDirectory ? 0 : new FileInfo(full).Length };
+            var id = isDirectory ? "runtime-app-directory-" + Guid.NewGuid().ToString("N") : "runtime-file-" + Guid.NewGuid().ToString("N");
+            if (isDirectory) appDirectories[id] = full; else { files[id] = full; readOnlyFiles.Add(id); }
+            node["id"] = id; entries.Add(node);
+        }
+        return new JsonObject { ["entries"] = entries, ["nextCursor"] = null };
+    }
     private JsonNode PickDirectory()
     {
         using var dialog = new FolderBrowserDialog { Description = "Select directory", UseDescriptionForTitle = true };
@@ -335,6 +414,7 @@ internal sealed class WebAppView : UserControl
     }
     private JsonNode? WriteChunk(JsonObject p)
     {
+        if (readOnlyFiles.Contains(Key(p))) throw new ApiError("file_read_only", "Application files are read-only");
         var data = p["data"]?.GetValue<string>() ?? throw new ApiError("invalid_params", "data is required"); byte[] bytes; try { bytes = Convert.FromBase64String(data); } catch { throw new ApiError("invalid_params", "Invalid base64"); } if (bytes.Length > 1024 * 1024) throw new ApiError("file_too_large", "Chunk is too large"); using var stream = new FileStream(FileFor(p), FileMode.Append, FileAccess.Write, FileShare.None); stream.Write(bytes); stream.Flush(true); return null;
     }
     private JsonNode? PersistDirectory(JsonObject p) { var name=Relative(p["name"]?.GetValue<string>() ?? throw new ApiError("invalid_params","name is required")); var saved=DirectoryStore();saved[name]=DirectoryFor(p);SaveDirectoryStore(saved);return null; }
@@ -429,6 +509,8 @@ internal sealed class WebAppView : UserControl
     private JsonNode? StorageTransaction(JsonObject p) { var scope=p["scope"]?.GetValue<string>() ?? "private"; if(scope is not ("private" or "public"))throw new ApiError("invalid_params","scope must be private or public"); lock(storageLock){var path=StoragePath(new JsonObject{{"scope",scope}});var data=ReadStorage(path);try{foreach(var raw in p["operations"]?.AsArray() ?? throw new ApiError("invalid_params","operations is required")){var op=raw?.AsObject()??throw new ApiError("invalid_params","operation must be object");switch(op["type"]?.GetValue<string>()){case "set": data[Key(op)]=op["value"]?.DeepClone();break;case "remove":data.Remove(Key(op));break;case "clear":data=new JsonObject();break;case "setSchemaVersion":var value=op["value"]?.GetValue<int>()??-1;if(value<0)throw new ApiError("invalid_params","schema version must be non-negative");data["__mini_schema_version"]=value;break;default:throw new ApiError("invalid_params","Unknown storage operation");}}Save(path,data);return null;}catch(ApiError){throw;}catch(Exception){throw new ApiError("storage_transaction_failed","Transaction was not applied");}} }
     private void RequirePermission(string permission)
     {
+        // Temporary development bypass for local P2P testing.
+        if (permission == "local.peers") return;
         if (!manifest.Permissions.Contains(permission)) throw new ApiError("permission_not_declared", $"Permission {permission} is not declared");
         if (permissions.IsGranted(permission)) return;
         if (MessageBox.Show(this, $"{manifest.Name} запрашивает доступ: {permission}", "Разрешение mini-app", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) throw new ApiError("permission_denied", $"Permission {permission} is required");
@@ -444,7 +526,7 @@ internal sealed class WebAppView : UserControl
     private JsonNode? OpenUrl(JsonObject p) { var raw=p["url"]?.GetValue<string>() ?? ""; if(!Uri.TryCreate(raw,UriKind.Absolute,out var u)||u.Scheme is not ("https" or "http" or "mailto" or "tel"))throw new ApiError("system_url_not_allowed","URL scheme is not allowed"); try{System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(u.ToString()){UseShellExecute=true});return null;}catch{throw new ApiError("system_no_handler","No application can open URL");} }
     private JsonNode? OpenFile(JsonObject p) { var id=p["fileId"]?.GetValue<string>() ?? throw new ApiError("invalid_params","fileId is required"); var path=FileFor(new JsonObject{{"id",id}}); try{System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path){UseShellExecute=true});return null;}catch{throw new ApiError("system_no_handler","No application can open file");} }
     private JsonNode? OpenSettings(JsonObject p) { try{System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:"){UseShellExecute=true});return null;}catch{throw new ApiError("feature_unavailable","Settings are unavailable");} }
-    private static string? PermissionFor(string method) => method.StartsWith("storage.") ? "storage" : method.StartsWith("secureStorage.") ? "secureStorage" : method == "clipboard.write" ? "clipboard.write" : method.StartsWith("clipboard.read") ? "clipboard.read" : method.StartsWith("network.") ? "network" : method.StartsWith("system.") ? "system.open" : method is "files.saveText" or "files.saveBase64" ? "files.save" : method is "files.pickDirectory" or "files.listDirectory" or "files.openInDirectory" or "files.createInDirectory" or "files.writeChunk" or "files.flush" or "files.persistDirectory" or "files.restoreDirectory" or "files.forgetDirectory" ? "files.directory" : method.StartsWith("files.") ? "files.pick" : method.StartsWith("share.") ? "share" : null;
+    private static string? PermissionFor(string method) => method.StartsWith("storage.") ? "storage" : method.StartsWith("secureStorage.") ? "secureStorage" : method == "clipboard.write" ? "clipboard.write" : method.StartsWith("clipboard.read") ? "clipboard.read" : method.StartsWith("network.") ? "network" : method.StartsWith("system.") ? "system.open" : method is "files.getAppDirectory" or "files.listAppDirectory" ? null : method is "files.saveText" or "files.saveBase64" ? "files.save" : method is "files.pickDirectory" or "files.listDirectory" or "files.openInDirectory" or "files.createInDirectory" or "files.writeChunk" or "files.flush" or "files.persistDirectory" or "files.restoreDirectory" or "files.forgetDirectory" ? "files.directory" : method.StartsWith("files.") ? "files.pick" : method.StartsWith("share.") ? "share" : null;
     private void Respond(string id, bool success, JsonNode? result, string? code, string? message)
     {
         var reply = new JsonObject { ["id"] = id, ["success"] = success };

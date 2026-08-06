@@ -72,6 +72,25 @@
     secureStorage: { get: key => call('secureStorage.get', { key }), set: (key, value) => call('secureStorage.set', { key, value }), remove: key => call('secureStorage.remove', { key }), keys: () => call('secureStorage.keys'), clear: () => call('secureStorage.clear') },
     device: { getInfo: () => call('device.getInfo') },
     network: { getStatus: () => call('network.getStatus'), request: options => call('network.request', options) },
+    // Peer networking is deliberately exposed as opaque runtime operations.  A
+    // mini-app receives neither network addresses nor socket handles; channel
+    // ownership is enforced by the native host using the current manifest ID.
+    peers: {
+      startDiscovery: () => call('peers.startDiscovery'),
+      stopDiscovery: () => call('peers.stopDiscovery'),
+      list: () => call('peers.list'),
+      connect: peerId => call('peers.connect', { peerId }),
+      disconnect: peerId => call('peers.disconnect', { peerId }),
+      connections: () => call('peers.connections'),
+      openChannel: options => call('peers.openChannel', options),
+      closeChannel: options => call('peers.closeChannel', options),
+      sendMessage: options => call('peers.sendMessage', options),
+      sendFile: options => call('peers.sendFile', options),
+      acceptFile: options => call('peers.acceptFile', options),
+      rejectFile: options => call('peers.rejectFile', options),
+      cancelTransfer: options => call('peers.cancelTransfer', options),
+      transfers: () => call('peers.transfers')
+    },
     notifications: { requestPermission: () => call('notifications.requestPermission'), schedule: options => call('notifications.schedule', options), cancel: id => call('notifications.cancel', { id }), get: id => call('notifications.get', { id }), list: () => call('notifications.list'), cancelAll: () => call('notifications.cancelAll') },
     clipboard: { write: text => call('clipboard.write', { text }), readText: () => call('clipboard.readText'), getAvailableFormats: () => call('clipboard.getAvailableFormats') },
     files: {
@@ -84,6 +103,10 @@
       readTextChunk: (id, options) => call('files.readTextChunk', Object.assign({ id }, options || {})),
       release: id => call('files.release', { id }),
       releaseMany: ids => call('files.releaseMany', { ids }),
+      // Read-only handles for resources bundled with this mini-app. They never
+      // expose an operating-system path and cannot be used for writes.
+      getAppDirectory: () => call('files.getAppDirectory'),
+      listAppDirectory: (id, options) => call('files.listAppDirectory', Object.assign({ id }, options || {})),
       pickDirectory: options => call('files.pickDirectory', options),
       listDirectory: (id, options) => call('files.listDirectory', Object.assign({ id }, options || {})),
       openInDirectory: (id, options) => call('files.openInDirectory', Object.assign({ id }, options || {})),
