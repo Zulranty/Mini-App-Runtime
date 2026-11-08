@@ -56,7 +56,7 @@ object PeerManager {
         deviceId=prefs.getString("deviceId",null)?:UUID.randomUUID().toString().also{prefs.edit().putString("deviceId",it).apply()}
         server=ServerSocket(0).also { socket -> thread(name="miniapps-peer-listener",isDaemon=true){while(!socket.isClosed)runCatching{handleIncoming(socket.accept())}} }
         nsd=app.getSystemService(Context.NSD_SERVICE) as NsdManager
-        val service=NsdServiceInfo().apply { serviceName="MiniApps-${deviceId.take(8)}";serviceType=SERVICE;port=server!!.localPort;setAttribute("protocolVersion","1");setAttribute("deviceId",deviceId);setAttribute("deviceName",android.os.Build.MODEL.take(80));setAttribute("platform","android");setAttribute("runtimeVersion","1.4.1") }
+        val service=NsdServiceInfo().apply { serviceName="MiniApps-${deviceId.take(8)}";serviceType=SERVICE;port=server!!.localPort;setAttribute("protocolVersion","1");setAttribute("deviceId",deviceId);setAttribute("deviceName",android.os.Build.MODEL.take(80));setAttribute("platform","android");setAttribute("runtimeVersion","1.5.0") }
         registration=object:NsdManager.RegistrationListener{override fun onServiceRegistered(x:NsdServiceInfo){};override fun onRegistrationFailed(x:NsdServiceInfo,e:Int){};override fun onServiceUnregistered(x:NsdServiceInfo){};override fun onUnregistrationFailed(x:NsdServiceInfo,e:Int){}}
         nsd!!.registerService(service,NsdManager.PROTOCOL_DNS_SD,registration)
         discovery=object:NsdManager.DiscoveryListener{override fun onDiscoveryStarted(x:String){};override fun onDiscoveryStopped(x:String){};override fun onStartDiscoveryFailed(x:String,e:Int){stop()};override fun onStopDiscoveryFailed(x:String,e:Int){stop()};override fun onServiceLost(x:NsdServiceInfo){};override fun onServiceFound(x:NsdServiceInfo){if(x.serviceType!=SERVICE)return;nsd!!.resolveService(x,object:NsdManager.ResolveListener{override fun onResolveFailed(y:NsdServiceInfo,e:Int){};override fun onServiceResolved(y:NsdServiceInfo){val attributes=y.attributes;val id=attributes["deviceId"]?.toString(Charsets.UTF_8)?:return;if(id==deviceId)return;peers[id]=Peer(id,attributes["deviceName"]?.toString(Charsets.UTF_8)?:"Device",attributes["platform"]?.toString(Charsets.UTF_8)?:"unknown",attributes["runtimeVersion"]?.toString(Charsets.UTF_8)?:"unknown",y.host.hostAddress?:return,y.port,System.currentTimeMillis());notifyChanged()}})}}
@@ -76,7 +76,7 @@ object PeerManager {
                 val data=packet.data.copyOf(packet.length)
                 when {
                     data.contentEquals(PROBE_REQUEST) -> {
-                        val body=JSONObject().put("id",deviceId).put("name",android.os.Build.MODEL.take(80)).put("platform","android").put("version","1.4.1").put("port",server?.localPort?:0).toString().toByteArray(Charsets.UTF_8)
+                        val body=JSONObject().put("id",deviceId).put("name",android.os.Build.MODEL.take(80)).put("platform","android").put("version","1.5.0").put("port",server?.localPort?:0).toString().toByteArray(Charsets.UTF_8)
                         val reply=PROBE_RESPONSE+body;socket.send(DatagramPacket(reply,reply.size,packet.address,packet.port))
                     }
                     data.size>PROBE_RESPONSE.size && data.copyOfRange(0,PROBE_RESPONSE.size).contentEquals(PROBE_RESPONSE) -> {

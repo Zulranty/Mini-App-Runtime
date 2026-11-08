@@ -1,0 +1,21 @@
+{
+  "id": "local.esp.light",
+  "name": "ESP Light",
+  "version": "1.3.0",
+  "sdkVersion": 2,
+  "minRuntimeVersion": "1.5.0",
+  "entry": "index.html",
+  "description": "Локальное управление ESP32: питание, яркость, цвет и эффекты светодиодной лампы.",
+  "permissions": [
+    "storage",
+    "network"
+  ],
+  "network": {
+    "allow": [],
+    "allowHttp": true,
+    "allowLocalNetwork": true,
+    "discoveryServices": [
+      "miniapp-light"
+    ]
+  }
+}

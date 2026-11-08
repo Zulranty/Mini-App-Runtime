@@ -10,7 +10,8 @@ set "PROJECT_FILE=%CD%\build\Windows\MiniAppRuntime.Windows.csproj"
 echo Restoring Windows packages...
 rem Restore on every build: the cached assets file can reference a Windows SDK
 rem reference pack that was never downloaded (NETSDK1112).
-dotnet restore "%PROJECT_FILE%" --runtime win-x64
+rem Allow a cached, complete package set to build when NuGet is temporarily offline.
+dotnet restore "%PROJECT_FILE%" --runtime win-x64 --ignore-failed-sources
 if errorlevel 1 goto Fail
 
 :BuildWindows

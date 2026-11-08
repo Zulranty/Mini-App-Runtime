@@ -22,15 +22,17 @@ class MiniAppWebViewClient(private val appId: String, private val root: File) : 
             val injection = "<script src=\"miniapp://runtime/runtime.js\"></script><link rel=\"stylesheet\" href=\"miniapp://interface/appbar.css\"><script src=\"miniapp://interface/appbar.js\"></script>"
             val source = file.readText()
             val html = if (Regex("(?i)</head>").containsMatchIn(source)) source.replaceFirst(Regex("(?i)</head>"), "$injection</head>") else "$injection$source"
-            WebResourceResponse("text/html", "utf-8", ByteArrayInputStream(html.toByteArray()))
+            // JavascriptInterface is visible to every frame in a WebView. Prevent
+            // embedded documents from reaching the privileged native bridge.
+            WebResourceResponse("text/html", "utf-8", 200, "OK",
+                mapOf("Content-Security-Policy" to "frame-src 'none'"),
+                ByteArrayInputStream(html.toByteArray()))
         } else WebResourceResponse(mime(file.extension), "utf-8", FileInputStream(file))
     }
 
     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
         val uri = request?.url ?: return true
-        if (uri.scheme == "miniapp") return false
-        if (uri.scheme == "http" || uri.scheme == "https") { view?.context?.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri)); return true }
-        return true
+        return uri.scheme != "miniapp" || uri.host != appId
     }
 
     private fun interfaceFile(relative: String): WebResourceResponse {

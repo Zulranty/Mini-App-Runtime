@@ -240,7 +240,7 @@ internal sealed class PeerManager : IDisposable
         byte[] packet;
         lock (gate)
         {
-            var body = JsonSerializer.SerializeToUtf8Bytes(new { id = deviceId, name = deviceName, platform = "windows", version = "1.4.1", port = listenerPort });
+            var body = JsonSerializer.SerializeToUtf8Bytes(new { id = deviceId, name = deviceName, platform = "windows", version = "1.5.0", port = listenerPort });
             packet = new byte[ProbeResponse.Length + body.Length]; ProbeResponse.CopyTo(packet, 0); body.CopyTo(packet, ProbeResponse.Length);
         }
         await socket.SendAsync(packet, target);
@@ -508,7 +508,7 @@ internal sealed class DnsMessage
         var instance = $"MiniApps-{id[..Math.Min(8, id.Length)]}.{service}"; var host = $"miniapps-{id[..Math.Min(8, id.Length)]}.local";
         var result = new List<byte>(12); result[2] = 0x84; result[3] = 0; result[6] = 0; result[7] = 4;
         AddRecord(result, service, 12, NameBytes(instance)); AddRecord(result, instance, 33, SrvBytes(port, host));
-        AddRecord(result, instance, 16, TxtBytes(new Dictionary<string, string> { ["protocolVersion"] = "1", ["deviceId"] = id, ["deviceName"] = displayName, ["platform"] = "windows", ["runtimeVersion"] = "1.4.1" }));
+        AddRecord(result, instance, 16, TxtBytes(new Dictionary<string, string> { ["protocolVersion"] = "1", ["deviceId"] = id, ["deviceName"] = displayName, ["platform"] = "windows", ["runtimeVersion"] = "1.5.0" }));
         AddRecord(result, host, 1, address.GetAddressBytes()); return [.. result];
     }
     public static DnsMessage Parse(ReadOnlySpan<byte> bytes)

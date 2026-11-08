@@ -602,7 +602,7 @@ When working with AI, users can provide a combined documentation file or only th
 
 ## Current Status
 
-Runtime version: `1.4.0`
+Runtime version: `1.5.0`
 Supported SDK version: `2`
 
 The main Android and Windows functionality is already implemented:

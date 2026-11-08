@@ -13,7 +13,7 @@ The project is designed for editable, offline-capable mini-apps rather than host
    build\Scripts\BuildAndroid.cmd
    ```
 
-   `BuildWindows.cmd` produces `Output/Windows/MiniAppsSetup.exe`; `BuildAndroid.cmd` produces `Output/Android/MiniApps.apk`. The scripts do not build an Android debug APK.
+   `BuildWindows.cmd` produces `Output/Windows/MiniAppsSetup.exe`; `BuildAndroid.cmd` produces `Output/Android/MiniApps.apk`. For local installation without configuring a production key, run `Build\Scripts\BuildAndroid.cmd Local`: it produces `Output/Android/MiniApps-local.apk` with the SDK debug certificate and release behavior.
 
 2. Create a folder containing `manifest.json` and `index.html`.
 
@@ -34,14 +34,27 @@ The project is designed for editable, offline-capable mini-apps rather than host
 
 The Gradle Wrapper downloads Gradle 8.14 on its first use. Windows restores NuGet packages when the local restore cache is absent, so the first build needs internet access.
 
+Android release builds also require a permanent app signing keystore. Set
+`MINIAPPS_ANDROID_KEYSTORE` to its path and provide
+`MINIAPPS_ANDROID_STORE_PASSWORD`, `MINIAPPS_ANDROID_KEY_ALIAS`, and
+`MINIAPPS_ANDROID_KEY_PASSWORD` through the build environment. The build fails
+if any value is missing. The explicit `Local` mode uses automatic debug signing;
+the default distribution build never falls back to it. Keep the
+keystore and passwords outside this repository and back them up securely. A
+different key cannot update an installed app signed by the original key. The
+local certificate is stored by the SDK in the normal debug keystore; retaining
+that keystore permits updates to earlier locally signed APKs.
+
 ## Documentation map
 
 - [Architecture](architecture.md) — components, data flow, and repository layout.
 - [Mini-app format](mini-app-format.md) — manifests, packaging, updates, permissions, network policy, and notifications.
 - [Runtime API](runtime-api.md) — the `mini.*` bridge, feature detection, limits, and platform availability.
+- [Local device presets](local-devices.md) — generic LAN discovery, endpoint capabilities, protocol and verification.
 - [Launcher management](launcher-management.md) — application lifecycle, sharing, rollback, and trusted launcher operations.
 - [Launcher interface module](interface-module.md) — editable launcher interfaces and Windows app bars.
 - [Security model](security-model.md) — trust boundaries, storage isolation, file capabilities, and network controls.
+- [Release readiness](release-readiness.md) — verified build checks and remaining distribution gates.
 - [Windows build details](windows-build.md) and [Windows distribution](windows-distribution.md) — publish layout, installer behavior, and updates.
 
 ## Mini-app example

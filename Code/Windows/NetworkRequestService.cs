@@ -24,16 +24,13 @@ internal static class NetworkRequestValidator
         var headers = Headers(p); var body = Body(p);
         using var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false };
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromMilliseconds(timeout) };
-        var redirected = false; string? authorization = null;
+        var redirected = false;
+        var forwardRequestHeaders = true;
         for (var attempt = 0; attempt <= 5; attempt++)
         {
             using var request = new HttpRequestMessage(new HttpMethod(method), url);
-            foreach (var pair in headers)
-            {
-                if (pair.Key.Equals("authorization", StringComparison.OrdinalIgnoreCase)) authorization = pair.Value;
-                request.Headers.TryAddWithoutValidation(pair.Key, pair.Value);
-            }
-            if (authorization is not null && !request.Headers.Contains("Authorization")) request.Headers.TryAddWithoutValidation("Authorization", authorization);
+            if (forwardRequestHeaders)
+                foreach (var pair in headers) request.Headers.TryAddWithoutValidation(pair.Key, pair.Value);
             if (body is not null) request.Content = new ByteArrayContent(body);
             HttpResponseMessage response;
             try { response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead); }
@@ -46,7 +43,7 @@ internal static class NetworkRequestValidator
                 {
                     if (attempt == 5 || response.Headers.Location is null) throw new ApiError("network_redirect_blocked", "Redirect blocked");
                     var next = response.Headers.Location.IsAbsoluteUri ? response.Headers.Location : new Uri(url, response.Headers.Location);
-                    if (!SameOrigin(url, next)) authorization = null;
+                    if (!SameOrigin(url, next)) forwardRequestHeaders = false;
                     url = ValidateUrl(next.ToString(), policy); redirected = true; continue;
                 }
                 var bytes = await ReadLimited(response.Content);

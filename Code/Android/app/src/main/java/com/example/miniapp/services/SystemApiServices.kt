@@ -49,7 +49,7 @@ object NetworkApi {
         }
 
         var redirected = false
-        var auth: String? = null
+        var forwardRequestHeaders = true
 
         repeat(6) { attempt ->
             val connection = openConnection(url)
@@ -60,7 +60,7 @@ object NetworkApi {
                 connection.readTimeout = timeout
                 connection.setRequestProperty("Accept-Encoding", "identity")
 
-                params.optJSONObject("headers")?.let { headers ->
+                params.optJSONObject("headers")?.takeIf { forwardRequestHeaders }?.let { headers ->
                     for (name in headers.keys()) {
                         val lower = name.lowercase()
                         if (lower in setOf(
@@ -76,12 +76,9 @@ object NetworkApi {
                             throw ApiFailure("invalid_params", "Forbidden request header")
                         }
                         val value = headers.optString(name)
-                        if (lower == "authorization") auth = value
                         connection.setRequestProperty(name, value)
                     }
                 }
-
-                if (auth != null) connection.setRequestProperty("Authorization", auth)
 
                 params.optJSONObject("body")?.let { body ->
                     val bytes = when (body.optString("encoding")) {
@@ -108,7 +105,7 @@ object NetworkApi {
                     val next = connection.getHeaderField("Location")
                         ?: throw ApiFailure("network_redirect_blocked", "Redirect has no location")
                     val nextUrl = URL(url, next)
-                    if (!sameOrigin(url, nextUrl)) auth = null
+                    if (!sameOrigin(url, nextUrl)) forwardRequestHeaders = false
                     url = parseAndAllow(nextUrl.toString(), config)
                     redirected = true
                     return@repeat
@@ -232,9 +229,10 @@ object NetworkApi {
         val allowed = config.allow.any { entry ->
             val allowedUri = Uri.parse(entry)
             val pattern = allowedUri.host!!.lowercase()
+            val schemeAllowed = allowedUri.scheme.equals(scheme, ignoreCase = true)
             val portAllowed = (allowedUri.port == -1 && port == null) || allowedUri.port == port
-            portAllowed && if (pattern.startsWith("*.")) {
-                host.endsWith(pattern.removePrefix("*.")) && host != pattern.removePrefix("*.")
+            schemeAllowed && portAllowed && if (pattern.startsWith("*.")) {
+                host.endsWith("." + pattern.removePrefix("*."))
             } else {
                 host == pattern || (config.allowSubdomains && host.endsWith(".$pattern"))
             }

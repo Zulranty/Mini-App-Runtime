@@ -7,14 +7,12 @@ SSID, or a host filesystem path.
 
 ## Permission and availability
 
-An app normally declares `local.peers` in its manifest and uses the normal
+An app declares `local.peers` in its manifest and uses the normal
 `mini.permissions.query('local.peers')` / `request('local.peers')` flow. The
-current development build temporarily grants this permission automatically so
-that transport testing is not blocked by a WebView permission prompt. This
-bypass is limited to `local.peers` and must be removed before release.
-Use `mini.runtime.supports('peers')` before displaying peer controls: this
-keeps apps compatible with Runtime versions that do not supply a native peer
-transport.
+permission is never granted automatically. The native transport is available
+only in development builds. Release builds report `peers` as unavailable and
+reject peer methods with `feature_unavailable`. Use
+`mini.runtime.supports('peers')` before displaying peer controls.
 
 ```js
 if (await mini.runtime.supports('peers')) {
@@ -47,9 +45,10 @@ files to another mini-app. File transfers use the existing opaque file and
 directory handles, native streaming, bounded chunks, and a final SHA-256
 verification; Base64 is not part of the peer-transfer protocol.
 
-The first version deliberately does not use TLS/HTTPS. Pairing confirmation is
-therefore required before a peer connection becomes usable, and users must not
-transfer sensitive data on an untrusted or public Wi-Fi network.
+The development transport currently has no authenticated pairing or encryption.
+Discovery IDs and the TCP handshake do not authenticate a remote device. Do not
+use it for sensitive data, even on a private network. Authenticated pairing and
+transport protection are required before enabling it in release builds.
 
 Android and Windows encode each post-handshake channel frame as a four-byte
 big-endian UTF-8 JSON length followed by the JSON payload. Frames are capped at

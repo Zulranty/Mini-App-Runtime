@@ -14,6 +14,12 @@ Build a compact framework-dependent executable:
 
 The shared web bridge `runtime.js` is copied on every Windows publish, so new `mini.*` APIs cannot be hidden by a stale publish-cache copy.
 
+Publishing into an existing `Output/Windows` refreshes packaged mini-app and
+interface files in place. User-added app and interface folders, public
+`storage.json`, private data, WebView2 profile data, and configuration are
+preserved. The publish script does not replace either content directory as a
+whole.
+
 The distributable keeps `MiniApps.exe`, `MiniApps`, `Interface`, and `Config` directly in `Output/Windows`. `Data/WebView2` contains the WebView2 loader and its XML documentation files; the WebView2 profile is stored in `Data/WebView2/UserData`. Window sizes, the selected launcher interface, and mini-app permissions are stored in `Config`; permission files use mini-app names. Private and secure mini-app storage remains in `Data/User`, while public storage remains inside the mini-app directory as `storage.json`.
 
 ## Offline Windows installer

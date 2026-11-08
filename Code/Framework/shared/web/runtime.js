@@ -71,7 +71,7 @@
     permissions: { query: permission => call('permissions.query', { permission }), request: permission => call('permissions.request', { permission }), openSettings: () => call('permissions.openSettings') },
     secureStorage: { get: key => call('secureStorage.get', { key }), set: (key, value) => call('secureStorage.set', { key, value }), remove: key => call('secureStorage.remove', { key }), keys: () => call('secureStorage.keys'), clear: () => call('secureStorage.clear') },
     device: { getInfo: () => call('device.getInfo') },
-    network: { getStatus: () => call('network.getStatus'), request: options => call('network.request', options) },
+    network: { getStatus: () => call('network.getStatus'), request: options => call('network.request', options), discoverDevices: options => call('network.discoverDevices', options), requestDevice: options => call('network.requestDevice', options) },
     // Peer networking is deliberately exposed as opaque runtime operations.  A
     // mini-app receives neither network addresses nor socket handles; channel
     // ownership is enforced by the native host using the current manifest ID.

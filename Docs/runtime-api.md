@@ -1,6 +1,6 @@
 # Runtime API v2
 
-Runtime version is `1.4.0`; SDK version 2 is supported. All methods return `Promise` and reject with an object carrying a stable `code`.
+Runtime version is `1.5.0`; SDK version 2 is supported. All methods return `Promise` and reject with an object carrying a stable `code`.
 
 ## Navigation
 
@@ -65,4 +65,11 @@ File pickers, clipboard reads, permission prompts, and external opening require 
 
 Always use `mini.runtime.supports(name)` or `getCapabilities()` instead of relying on this table.
 
+`mini.peers` is a development-only transport. Release builds report it as
+unavailable until authenticated pairing and transport protection are added.
+
 `app.updated`, `app.rolledBack`, and `storage.restored` are reserved lifecycle events: applications should feature-detect them until the launcher emits them on both platforms.
+
+## Local device discovery (1.5.0)
+
+`mini.network.discoverDevices({ service, timeoutMs })` finds devices implementing the generic local discovery protocol. `mini.network.requestDevice({ id, path, method, token, body, timeoutMs })` sends bounded GET/POST requests through app-scoped endpoint capabilities. Both methods require `network`, manifest `allowHttp` and `allowLocalNetwork`, and an allowed `discoveryServices` entry. They are available in release builds and do not enable `mini.peers`. Devices, rather than the host, define command semantics. See [Local device presets](local-devices.md) for the complete contract, limits and protocol.

@@ -177,3 +177,7 @@ Only exact origins and leading host wildcards are accepted. `*.example.com` does
 ## Notifications
 
 Android mini-apps may declare `notifications` and schedule a one-time notification with `at`, a daily/weekly local-time schedule, or an `interval` from 15 minutes to seven days. Notification payloads must be JSON and are limited to 16 KiB. Windows declares the same permission for manifest compatibility but reports notification scheduling unavailable through capabilities.
+
+## Discovery-only local device policy (1.5.0)
+
+`network.discoveryServices` is an optional list of up to eight generic service names matching `[a-z][a-z0-9-]{0,47}`. A discovery policy requires the `network` permission and both `allowHttp: true` and `allowLocalNetwork: true`. `network.allow` may be empty when valid discovery services are declared; ordinary `network.request` continues to require an allowlisted origin. This creates no wildcard permission to arbitrary LAN URLs. See [Local device presets](local-devices.md).

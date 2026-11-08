@@ -30,7 +30,7 @@ object AppInfoService {
             .put("entry", manifest.entry).put("description", manifest.description).put("author", manifest.author).put("icon", manifest.icon).put("minRuntimeVersion", manifest.minRuntimeVersion)
             .put("permissions", JSONArray(manifest.permissions.sorted())).put("installedAt", installedAt).put("updatedAt", updatedAt)
             .put("appSizeBytes", appSize).put("dataSizeBytes", publicData + privateData + secureData).put("publicDataSizeBytes", publicData).put("privateDataSizeBytes", privateData).put("secureDataSizeBytes", secureData)
-            .put("network", manifest.network?.let { JSONObject().put("allow", JSONArray(it.allow.sorted())).put("allowSubdomains", it.allowSubdomains).put("allowHttp", it.allowHttp).put("allowLocalNetwork", it.allowLocalNetwork) })
+            .put("network", manifest.network?.let { JSONObject().put("allow", JSONArray(it.allow.sorted())).put("allowSubdomains", it.allowSubdomains).put("allowHttp", it.allowHttp).put("allowLocalNetwork", it.allowLocalNetwork).put("discoveryServices", JSONArray(it.discoveryServices.sorted())) })
     }
     private fun sizeOf(file: File) = if (file.isFile) file.length() else 0L
 }

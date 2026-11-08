@@ -26,7 +26,7 @@ internal static class Program
             : IntPtr.Zero;
 }
 
-internal sealed record NetworkPolicy(IReadOnlySet<string> Allow, bool AllowSubdomains, bool AllowHttp, bool AllowLocalNetwork);
+internal sealed record NetworkPolicy(IReadOnlySet<string> Allow, bool AllowSubdomains, bool AllowHttp, bool AllowLocalNetwork, IReadOnlySet<string>? DiscoveryServices = null);
 internal sealed record MiniManifest(string Id, string Name, string Version, int SdkVersion, string Entry, HashSet<string> Permissions, string? MinRuntimeVersion, NetworkPolicy? Network)
 {
     public static MiniManifest Parse(string json)
@@ -49,8 +49,13 @@ internal sealed record MiniManifest(string Id, string Name, string Version, int 
         if (node["network"] is JsonObject config)
         {
             var allow = config["allow"]?.AsArray().Select(item => item?.GetValue<string>() ?? "").ToHashSet() ?? [];
-            if (!permissions.Contains("network") || allow.Count == 0 || allow.Any(item => !NetworkRequestValidator.ValidOrigin(item))) throw new ApiError("source_file_invalid", "Invalid network configuration");
-            network = new NetworkPolicy(allow, config["allowSubdomains"]?.GetValue<bool>() == true, config["allowHttp"]?.GetValue<bool>() == true, config["allowLocalNetwork"]?.GetValue<bool>() == true);
+            var services = config["discoveryServices"]?.AsArray().Select(item => item?.GetValue<string>() ?? "").ToHashSet() ?? [];
+            var allowHttp = config["allowHttp"]?.GetValue<bool>() == true;
+            var allowLocal = config["allowLocalNetwork"]?.GetValue<bool>() == true;
+            if (!permissions.Contains("network") || (allow.Count == 0 && services.Count == 0) || allow.Any(item => !NetworkRequestValidator.ValidOrigin(item)) ||
+                services.Count > 8 || services.Any(item => !LocalDeviceService.ValidService(item)) || (services.Count > 0 && (!allowHttp || !allowLocal)))
+                throw new ApiError("source_file_invalid", "Invalid network configuration");
+            network = new NetworkPolicy(allow, config["allowSubdomains"]?.GetValue<bool>() == true, allowHttp, allowLocal, services);
         }
         return new(id, name, version, sdkVersion, entry, permissions, minRuntimeVersion, network);
     }
@@ -186,11 +191,30 @@ internal static class MiniStore
     }
     public static void InstallInterface(string source)
     {
-        Directory.CreateDirectory(InterfaceRoot); if (!File.Exists(source)) throw new ApiError("source_file_not_found", "Source file was not found");
-        var ext=Path.GetExtension(source).ToLowerInvariant(); if (ext is not (".zip" or ".html" or ".htm")) throw new ApiError("source_file_invalid", "Only ZIP and HTML files are supported");
-        var id=FolderName(Path.GetFileNameWithoutExtension(source)); var staging=Path.Combine(InterfaceRoot, "."+id+"-"+Guid.NewGuid().ToString("N")); var target=Path.Combine(InterfaceRoot,id);
-        try { Directory.CreateDirectory(staging); if(ext==".zip") ExtractInterfaceZip(source,staging); else File.Copy(source,Path.Combine(staging,"index.html")); if(!File.Exists(Path.Combine(staging,"index.html")))throw new ApiError("source_file_invalid","Interface index.html is missing"); var old=Path.Combine(InterfaceRoot,"."+id+"-old");if(Directory.Exists(old))Directory.Delete(old,true);if(Directory.Exists(target))Directory.Move(target,old);Directory.Move(staging,target);if(Directory.Exists(old))Directory.Delete(old,true); }
-        finally { if(Directory.Exists(staging))Directory.Delete(staging,true); }
+        Directory.CreateDirectory(InterfaceRoot);
+        if (!File.Exists(source)) throw new ApiError("source_file_not_found", "Source file was not found");
+        var ext = Path.GetExtension(source).ToLowerInvariant();
+        if (ext is not (".zip" or ".html" or ".htm")) throw new ApiError("source_file_invalid", "Only ZIP and HTML files are supported");
+        var id = FolderName(Path.GetFileNameWithoutExtension(source));
+        var staging = Path.Combine(InterfaceRoot, "." + id + "-" + Guid.NewGuid().ToString("N"));
+        var backup = Path.Combine(InterfaceRoot, "." + id + "-old-" + Guid.NewGuid().ToString("N"));
+        var target = Path.Combine(InterfaceRoot, id);
+        try
+        {
+            Directory.CreateDirectory(staging);
+            if (ext == ".zip") ExtractInterfaceZip(source, staging);
+            else File.Copy(source, Path.Combine(staging, "index.html"));
+            if (!File.Exists(Path.Combine(staging, "index.html"))) throw new ApiError("source_file_invalid", "Interface index.html is missing");
+            if (Directory.Exists(target)) Directory.Move(target, backup);
+            try { Directory.Move(staging, target); }
+            catch
+            {
+                if (Directory.Exists(backup) && !Directory.Exists(target)) Directory.Move(backup, target);
+                throw;
+            }
+            if (Directory.Exists(backup)) { try { Directory.Delete(backup, true); } catch (IOException) { } }
+        }
+        finally { if (Directory.Exists(staging)) Directory.Delete(staging, true); }
     }
     private static string ActiveInterfaceId()
     {
@@ -208,7 +232,38 @@ internal static class MiniStore
         catch { return "default"; }
     }
     private static void ScanInterfaces() { foreach(var source in Directory.EnumerateFiles(InterfaceRoot).Where(x=>Path.GetExtension(x).Equals(".zip",StringComparison.OrdinalIgnoreCase)||Path.GetExtension(x).Equals(".html",StringComparison.OrdinalIgnoreCase)||Path.GetExtension(x).Equals(".htm",StringComparison.OrdinalIgnoreCase))) { try { InstallInterface(source); File.Delete(source); } catch { } } }
-    private static void ExtractInterfaceZip(string source,string target) { using var archive=ZipFile.OpenRead(source);if(archive.Entries.Count>1000)throw new ApiError("source_file_invalid","Too many files");long total=0;foreach(var entry in archive.Entries){if(string.IsNullOrEmpty(entry.Name))continue;if(!MiniManifest.SafeRelativePath(entry.FullName))throw new ApiError("source_file_invalid","Unsafe ZIP path");var path=Path.GetFullPath(Path.Combine(target,entry.FullName));if(!path.StartsWith(Path.GetFullPath(target)+Path.DirectorySeparatorChar,StringComparison.Ordinal))throw new ApiError("source_file_invalid","Zip Slip blocked");Directory.CreateDirectory(Path.GetDirectoryName(path)!);entry.ExtractToFile(path,true);total+=entry.Length;if(total>50*1024*1024)throw new ApiError("source_file_invalid","Archive is too large");} }
+    private static void ExtractInterfaceZip(string source, string target)
+    {
+        if (new FileInfo(source).Length > 20 * 1024 * 1024) throw new ApiError("source_file_invalid", "Archive is too large");
+        using var archive = ZipFile.OpenRead(source);
+        if (archive.Entries.Count > 1000) throw new ApiError("source_file_invalid", "Too many files");
+        long total = 0;
+        foreach (var entry in archive.Entries)
+        {
+            if (string.IsNullOrEmpty(entry.Name)) continue;
+            if (!MiniManifest.SafeRelativePath(entry.FullName)) throw new ApiError("source_file_invalid", "Unsafe ZIP path");
+            var path = Path.GetFullPath(Path.Combine(target, entry.FullName));
+            if (!path.StartsWith(Path.GetFullPath(target) + Path.DirectorySeparatorChar, StringComparison.Ordinal)) throw new ApiError("source_file_invalid", "Zip Slip blocked");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            ExtractLimited(entry, path, ref total);
+        }
+    }
+
+    private static void ExtractLimited(ZipArchiveEntry entry, string path, ref long total)
+    {
+        const long maxBytes = 50L * 1024 * 1024;
+        if (entry.Length > maxBytes - total) throw new ApiError("source_file_invalid", "Unpacked archive too large");
+        using var input = entry.Open();
+        using var output = File.Create(path);
+        var buffer = new byte[8192];
+        int count;
+        while ((count = input.Read(buffer)) != 0)
+        {
+            if (count > maxBytes - total) throw new ApiError("source_file_invalid", "Unpacked archive too large");
+            output.Write(buffer, 0, count);
+            total += count;
+        }
+    }
 
     public static IReadOnlyList<(MiniManifest Manifest, string Directory)> Apps() =>
         Directory.EnumerateDirectories(Root)
@@ -241,8 +296,7 @@ internal static class MiniStore
                     var file = Path.GetFullPath(Path.Combine(temp, entry.FullName));
                     if (!file.StartsWith(Path.GetFullPath(temp) + Path.DirectorySeparatorChar, StringComparison.Ordinal)) throw new ApiError("source_file_invalid", "Zip Slip blocked");
                     Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-                    using var input = entry.Open(); using var output = File.Create(file); input.CopyTo(output); total += entry.Length;
-                    if (total > 50 * 1024 * 1024) throw new ApiError("source_file_invalid", "Unpacked archive too large");
+                    ExtractLimited(entry, file, ref total);
                 }
                 incoming = TryRead(Path.Combine(temp, "manifest.json")) ?? throw new ApiError("source_file_invalid", "manifest.json is missing");
             }
@@ -422,7 +476,14 @@ internal sealed class LauncherForm : Form
             web.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
             web.CoreWebView2.SetVirtualHostNameToFolderMapping("launcher.local", MiniStore.ActiveLauncherInterfaceRoot, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.DenyCors);
             await web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(await File.ReadAllTextAsync(Path.Combine(MiniStore.ResourceRoot, "launcher-runtime.js")));
-            web.CoreWebView2.WebMessageReceived += (_, e) => HandleRequest(e.TryGetWebMessageAsString());
+            web.CoreWebView2.WebMessageReceived += (_, e) =>
+            {
+                if (Uri.TryCreate(e.Source, UriKind.Absolute, out var source) &&
+                    source.Scheme == Uri.UriSchemeHttps && source.IsDefaultPort &&
+                    string.IsNullOrEmpty(source.UserInfo) &&
+                    string.Equals(source.Host, "launcher.local", StringComparison.OrdinalIgnoreCase))
+                    HandleRequest(e.TryGetWebMessageAsString());
+            };
             // Launcher sharing is clipboard-based, so it works on every supported Windows version.
             web.CoreWebView2.Navigate("https://launcher.local/index.html");
         }

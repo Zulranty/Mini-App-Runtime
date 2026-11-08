@@ -10,12 +10,19 @@ namespace MiniAppRuntime.Windows;
 
 internal sealed class WebAppView : UserControl
 {
+    private const string RuntimeVersion = "1.5.0";
+#if DEBUG
+    private static readonly bool PeerTransportEnabled = true;
+#else
+    private static readonly bool PeerTransportEnabled = false;
+#endif
     private readonly MiniManifest manifest;
     private readonly string directory;
     private readonly WebView2 web = new() { Dock = DockStyle.Fill };
     private readonly NativeTopBar topBar = new() { Dock = DockStyle.Top, Visible = false };
     private readonly PermissionStore permissions;
     private readonly SecureStorageStore secureStorage;
+    private readonly LocalDeviceService localDevices = new();
     private readonly Dictionary<string, string> files = [];
     private readonly Dictionary<string, string> directories = [];
     private readonly Dictionary<string, string> appDirectories = [];
@@ -46,7 +53,7 @@ internal sealed class WebAppView : UserControl
         lastNetworkState = NetworkStatus().ToJsonString();
         System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += NetworkChanged;
         topBar.ActionRequested += NotifyTopBarAction;
-        Disposed += (_, _) => { System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged -= NetworkChanged; PeerManager.Instance.Unsubscribe(manifest.Id, peerEvent); ClearTimers(); share?.Dispose(); };
+        Disposed += (_, _) => { System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged -= NetworkChanged; PeerManager.Instance.Unsubscribe(manifest.Id, peerEvent); localDevices.Dispose(); ClearTimers(); share?.Dispose(); };
         Load += (_, _) => SetWindowTitle(manifest.Name);
         Load += async (_, _) => await InitializeAsync();
     }
@@ -55,9 +62,9 @@ internal sealed class WebAppView : UserControl
     {
         try
         {
-            if (manifest.MinRuntimeVersion is not null && SemanticVersion.Compare("1.4.0", manifest.MinRuntimeVersion) < 0)
+            if (manifest.MinRuntimeVersion is not null && SemanticVersion.Compare(RuntimeVersion, manifest.MinRuntimeVersion) < 0)
             {
-                MessageBox.Show(FindForm(), $"Runtime 1.4.0 is older than required {manifest.MinRuntimeVersion}.", "Mini App Runtime", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(FindForm(), $"Runtime {RuntimeVersion} is older than required {manifest.MinRuntimeVersion}.", "Mini App Runtime", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 onExit(); return;
             }
             await web.EnsureCoreWebView2Async(await MiniStore.GetWebViewEnvironmentAsync());
@@ -68,15 +75,24 @@ internal sealed class WebAppView : UserControl
             var runtime = await File.ReadAllTextAsync(Path.Combine(MiniStore.ResourceRoot, "runtime.js"));
             await web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(runtime);
             await web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync("window.addEventListener('DOMContentLoaded',()=>{const css=document.createElement('link');css.rel='stylesheet';css.href='https://interface.local/appbar.css';document.head.append(css);const script=document.createElement('script');script.src='https://interface.local/appbar.js';document.head.append(script);});");
-            web.CoreWebView2.WebMessageReceived += (_, e) => HandleMessage(e.TryGetWebMessageAsString());
+            web.CoreWebView2.WebMessageReceived += (_, e) =>
+            {
+                if (TrustedSource(e.Source, "miniapp.local")) HandleMessage(e.TryGetWebMessageAsString());
+            };
             web.CoreWebView2.NavigationStarting += (_, e) =>
             {
-                if (Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri) && uri.Host != "miniapp.local") { e.Cancel = true; System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.ToString()) { UseShellExecute = true }); }
+                if (!TrustedSource(e.Uri, "miniapp.local")) e.Cancel = true;
             };
             web.CoreWebView2.Navigate($"https://miniapp.local/{manifest.Entry}");
         }
         catch (Exception error) { MessageBox.Show(FindForm(), "Не удалось запустить WebView2. Установите Microsoft Edge WebView2 Runtime.\n\n" + error.Message, "Mini App Runtime", MessageBoxButtons.OK, MessageBoxIcon.Error); onExit(); }
     }
+
+    private static bool TrustedSource(string source, string host) =>
+        Uri.TryCreate(source, UriKind.Absolute, out var uri) &&
+        uri.Scheme == Uri.UriSchemeHttps && uri.IsDefaultPort &&
+        string.IsNullOrEmpty(uri.UserInfo) &&
+        string.Equals(uri.Host, host, StringComparison.OrdinalIgnoreCase);
 
     private void HandleMessage(string raw)
     {
@@ -97,6 +113,7 @@ internal sealed class WebAppView : UserControl
             if (method == "permissions.request") { Respond(id, true, RequestPermission(parameters), null, null); return; }
             if (method.StartsWith("peers.", StringComparison.Ordinal))
             {
+                if (!PeerTransportEnabled) throw new ApiError("feature_unavailable", "Peer transport is unavailable in release builds");
                 RequirePermission("local.peers");
                 PeerManager.Instance.Subscribe(manifest.Id, peerEvent);
                 if (method == "peers.connect") { _ = ConnectPeerAsync(id, parameters); return; }
@@ -117,11 +134,12 @@ internal sealed class WebAppView : UserControl
             var permission = PermissionFor(method);
             if (permission is not null && !IsReadOnlyAppFileRead(method, parameters)) RequirePermission(permission);
             if (method == "network.request") { _ = NetworkRequestAsync(id, parameters); return; }
+            if (method is "network.discoverDevices" or "network.requestDevice") { _ = LocalDeviceAsync(id, method, parameters); return; }
             JsonNode? result = method switch
             {
                 "app.getInfo" => new JsonObject { ["id"] = manifest.Id, ["name"] = manifest.Name, ["version"] = manifest.Version, ["sdkVersion"] = manifest.SdkVersion },
                 "app.getAppInfo" => MiniStore.AppInfo(manifest, directory),
-                "app.getRuntimeVersion" => "1.4.0",
+                "app.getRuntimeVersion" => RuntimeVersion,
                 "app.getLaunchParams" => new JsonObject { ["reason"] = "normal" },
                 "runtime.getCapabilities" => Capabilities(),
                 "runtime.supports" => Supported(parameters),
@@ -239,23 +257,47 @@ internal sealed class WebAppView : UserControl
         catch (ApiError error) { if (!IsDisposed) BeginInvoke(() => Respond(requestId, false, null, error.Code, error.Message)); }
         catch { if (!IsDisposed) BeginInvoke(() => Respond(requestId, false, null, "peer_connection_failed", "Could not connect to peer")); }
     }
-    private JsonNode Capabilities() => new JsonObject
+    private JsonNode Capabilities()
     {
-        ["runtimeVersion"] = "1.4.0", ["sdkVersion"] = 2, ["platform"] = "windows",
-        ["methods"] = new JsonArray("app.getInfo", "app.getAppInfo", "app.getLaunchParams", "storage.get", "storage.set", "storage.getMany", "storage.setMany", "storage.transaction", "navigation.setBackEnabled", "navigation.getState", "runtime.getCapabilities", "runtime.supports", "permissions.query", "permissions.request", "permissions.openSettings", "secureStorage.get", "secureStorage.set", "secureStorage.remove", "secureStorage.keys", "secureStorage.clear", "network.getStatus", "network.request", "clipboard.readText", "clipboard.getAvailableFormats", "files.pickMultiple", "files.getInfo", "files.readChunk", "files.readTextChunk", "files.releaseMany", "files.getAppDirectory", "files.listAppDirectory", "files.pickDirectory", "files.listDirectory", "files.openInDirectory", "files.createInDirectory", "files.writeChunk", "files.flush", "files.persistDirectory", "files.restoreDirectory", "files.forgetDirectory", "ui.alert", "ui.confirm", "ui.prompt", "ui.toast", "system.canOpenUrl", "system.openUrl", "system.openFile", "system.openSettings", "peers.startDiscovery", "peers.stopDiscovery", "peers.list", "peers.connect", "peers.disconnect", "peers.connections", "peers.openChannel", "peers.closeChannel", "peers.sendMessage"),
-        ["features"] = new JsonObject { ["navigation.backRequested"] = true, ["storage.transactions"] = true, ["backup.restore"] = false, ["secureStorage"] = true, ["network.request"] = true, ["network.statusChanged"] = true, ["notifications.schedule"] = false, ["files.readChunk"] = true, ["files.pickMultiple"] = true, ["files.directory"] = true, ["clipboard.readText"] = true, ["ui.nativeDialogs"] = true, ["haptics"] = false, ["system.openUrl"] = true, ["peers"] = true, ["peers.discovery"] = true },
+        var result = new JsonObject
+        {
+        ["runtimeVersion"] = RuntimeVersion, ["sdkVersion"] = 2, ["platform"] = "windows",
+        ["methods"] = new JsonArray("app.getInfo", "app.getAppInfo", "app.getLaunchParams", "storage.get", "storage.set", "storage.getMany", "storage.setMany", "storage.transaction", "navigation.setBackEnabled", "navigation.getState", "runtime.getCapabilities", "runtime.supports", "permissions.query", "permissions.request", "permissions.openSettings", "secureStorage.get", "secureStorage.set", "secureStorage.remove", "secureStorage.keys", "secureStorage.clear", "network.getStatus", "network.request", "network.discoverDevices", "network.requestDevice", "clipboard.readText", "clipboard.getAvailableFormats", "files.pickMultiple", "files.getInfo", "files.readChunk", "files.readTextChunk", "files.releaseMany", "files.getAppDirectory", "files.listAppDirectory", "files.pickDirectory", "files.listDirectory", "files.openInDirectory", "files.createInDirectory", "files.writeChunk", "files.flush", "files.persistDirectory", "files.restoreDirectory", "files.forgetDirectory", "ui.alert", "ui.confirm", "ui.prompt", "ui.toast", "system.canOpenUrl", "system.openUrl", "system.openFile", "system.openSettings", "peers.startDiscovery", "peers.stopDiscovery", "peers.list", "peers.connect", "peers.disconnect", "peers.connections", "peers.openChannel", "peers.closeChannel", "peers.sendMessage"),
+        ["features"] = new JsonObject { ["navigation.backRequested"] = true, ["storage.transactions"] = true, ["backup.restore"] = false, ["secureStorage"] = true, ["network.request"] = true, ["network.statusChanged"] = true, ["notifications.schedule"] = false, ["files.readChunk"] = true, ["files.pickMultiple"] = true, ["files.directory"] = true, ["clipboard.readText"] = true, ["ui.nativeDialogs"] = true, ["haptics"] = false, ["system.openUrl"] = true, ["peers"] = PeerTransportEnabled, ["peers.discovery"] = PeerTransportEnabled },
         ["limits"] = new JsonObject { ["storageBytes"] = 5 * 1024 * 1024, ["fileWriteBytes"] = 10 * 1024 * 1024, ["shareFileBytes"] = 10 * 1024 * 1024, ["networkRequestBytes"] = NetworkRequestValidator.MaxRequestBytes, ["networkResponseBytes"] = NetworkRequestValidator.MaxResponseBytes, ["networkRedirects"] = 5 }
-    };
+        };
+        if (!PeerTransportEnabled)
+        {
+            var methods = result["methods"]!.AsArray();
+            for (var index = methods.Count - 1; index >= 0; index--)
+                if (methods[index]?.GetValue<string>() is { } methodName && methodName.StartsWith("peers.", StringComparison.Ordinal))
+                    methods.RemoveAt(index);
+        }
+        return result;
+    }
     private JsonNode Supported(JsonObject parameters)
     {
         var name = parameters["name"]?.GetValue<string>() ?? "";
-        return name is "peers" or "peers.discovery" || Capabilities()["methods"]!.AsArray().Any(item => item?.GetValue<string>() == name) || Capabilities()["features"]?[name]?.GetValue<bool>() == true;
+        var capabilities = Capabilities();
+        return capabilities["methods"]!.AsArray().Any(item => item?.GetValue<string>() == name) || capabilities["features"]?[name]?.GetValue<bool>() == true;
     }
     private async Task NetworkRequestAsync(string id, JsonObject parameters)
     {
         try { var result = await NetworkRequestValidator.RequestAsync(manifest.Network, parameters); if (!IsDisposed) BeginInvoke(() => Respond(id, true, result, null, null)); }
         catch (ApiError error) { if (!IsDisposed) BeginInvoke(() => Respond(id, false, null, error.Code, error.Message)); }
         catch { if (!IsDisposed) BeginInvoke(() => Respond(id, false, null, "network_request_failed", "Request failed")); }
+    }
+    private async Task LocalDeviceAsync(string id, string method, JsonObject parameters)
+    {
+        try
+        {
+            JsonNode result = method == "network.discoverDevices"
+                ? await localDevices.DiscoverAsync(manifest.Network, parameters)
+                : await localDevices.RequestAsync(manifest.Network, parameters);
+            if (!IsDisposed) Respond(id, true, result, null, null);
+        }
+        catch (ApiError error) { if (!IsDisposed) Respond(id, false, null, error.Code, error.Message); }
+        catch (Exception) { if (!IsDisposed) Respond(id, false, null, "network_request_failed", "Local device operation failed"); }
     }
     private JsonNode SetBackEnabled(JsonObject parameters) { backEnabled = parameters["enabled"]?.GetValue<bool>() != false; return new JsonObject { ["backEnabled"] = backEnabled }; }
     private async void RequestBack()
@@ -278,13 +320,11 @@ internal sealed class WebAppView : UserControl
     private JsonNode PermissionState(JsonObject parameters)
     {
         var permission = parameters["permission"]?.GetValue<string>() ?? "";
-        if (permission == "local.peers") return "granted";
         return !manifest.Permissions.Contains(permission) ? "not_declared" : permissions.State(permission);
     }
     private JsonNode RequestPermission(JsonObject parameters)
     {
         var permission = parameters["permission"]?.GetValue<string>() ?? "";
-        if (permission == "local.peers") return "granted";
         if (!manifest.Permissions.Contains(permission)) throw new ApiError("permission_not_declared", "Permission is not declared");
         if (permissions.State(permission) == "granted") return "granted";
         var allowed = MessageBox.Show(OwnerWindow(), $"{manifest.Name} requests: {permission}", "Mini App permission", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
@@ -515,8 +555,6 @@ internal sealed class WebAppView : UserControl
     private JsonNode? StorageTransaction(JsonObject p) { var scope=p["scope"]?.GetValue<string>() ?? "private"; if(scope is not ("private" or "public"))throw new ApiError("invalid_params","scope must be private or public"); lock(storageLock){var path=StoragePath(new JsonObject{{"scope",scope}});var data=ReadStorage(path);try{foreach(var raw in p["operations"]?.AsArray() ?? throw new ApiError("invalid_params","operations is required")){var op=raw?.AsObject()??throw new ApiError("invalid_params","operation must be object");switch(op["type"]?.GetValue<string>()){case "set": data[Key(op)]=op["value"]?.DeepClone();break;case "remove":data.Remove(Key(op));break;case "clear":data=new JsonObject();break;case "setSchemaVersion":var value=op["value"]?.GetValue<int>()??-1;if(value<0)throw new ApiError("invalid_params","schema version must be non-negative");data["__mini_schema_version"]=value;break;default:throw new ApiError("invalid_params","Unknown storage operation");}}Save(path,data);return null;}catch(ApiError){throw;}catch(Exception){throw new ApiError("storage_transaction_failed","Transaction was not applied");}} }
     private void RequirePermission(string permission)
     {
-        // Temporary development bypass for local P2P testing.
-        if (permission == "local.peers") return;
         if (!manifest.Permissions.Contains(permission)) throw new ApiError("permission_not_declared", $"Permission {permission} is not declared");
         if (permissions.IsGranted(permission)) return;
         if (MessageBox.Show(this, $"{manifest.Name} запрашивает доступ: {permission}", "Разрешение mini-app", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) throw new ApiError("permission_denied", $"Permission {permission} is required");

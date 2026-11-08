@@ -20,6 +20,20 @@ $config = Join-Path $output "Config"
 $configBackup = Join-Path $cache "config-backup"
 
 New-Item -ItemType Directory -Path $cache -Force | Out-Null
+# A previous interrupted publish may have moved user data into Cache.
+# Restore it before touching the staging tree; never discard a saved copy.
+foreach ($pair in @(
+    @($userDataBackup, $userData),
+    @($webViewUserDataBackup, $webViewUserData),
+    @($configBackup, $config)
+)) {
+    $saved, $destination = $pair
+    if (Test-Path -LiteralPath $saved) {
+        if (Test-Path -LiteralPath $destination) { throw "Saved publish data and destination both exist: $saved" }
+        New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+        Move-Item -LiteralPath $saved -Destination $destination
+    }
+}
 if (Test-Path $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
 $publishArguments = @($project, "-c", "Release", "-r", "win-x64", "-o", $staging)
 if ($SelfContained) { $publishArguments += "--self-contained" }
@@ -30,13 +44,10 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 # A previous publish may have left runtime dependencies beside the EXE. Remove
 # only items emitted by this publish; user-owned MiniApps and Interface remain.
-Get-ChildItem -Force $staging | Where-Object { $_.Name -ne "MiniApps.exe" } | ForEach-Object {
+Get-ChildItem -Force $staging | Where-Object { $_.Name -notin @("MiniApps.exe", "MiniApps", "Interface") } | ForEach-Object {
     $previous = Join-Path $output $_.Name
     if (Test-Path $previous) { Remove-Item -LiteralPath $previous -Recurse -Force }
 }
-if (Test-Path $userDataBackup) { Remove-Item -LiteralPath $userDataBackup -Recurse -Force }
-if (Test-Path $webViewUserDataBackup) { Remove-Item -LiteralPath $webViewUserDataBackup -Recurse -Force }
-if (Test-Path $configBackup) { Remove-Item -LiteralPath $configBackup -Recurse -Force }
 if (Test-Path $userData) { Move-Item -LiteralPath $userData -Destination $userDataBackup }
 if (Test-Path $webViewUserData) { Move-Item -LiteralPath $webViewUserData -Destination $webViewUserDataBackup }
 if (Test-Path $config) { Move-Item -LiteralPath $config -Destination $configBackup }
@@ -51,10 +62,20 @@ New-Item -ItemType Directory -Path (Join-Path $runtime "WebView2") -Force | Out-
     $source = Join-Path $runtime $_
     if (Test-Path $source) { Move-Item -LiteralPath $source -Destination (Join-Path $runtime "WebView2") -Force }
 }
-if (Test-Path $interface) { Remove-Item -LiteralPath $interface -Recurse -Force }
-if (Test-Path (Join-Path $staging "Interface")) { Move-Item -LiteralPath (Join-Path $staging "Interface") -Destination $interface }
-if (Test-Path $miniApps) { Remove-Item -LiteralPath $miniApps -Recurse -Force }
-if (Test-Path (Join-Path $staging "MiniApps")) { Move-Item -LiteralPath (Join-Path $staging "MiniApps") -Destination $miniApps }
+foreach ($folderName in @("Interface", "MiniApps")) {
+    $packageRoot = Join-Path $staging $folderName
+    if (-not (Test-Path -LiteralPath $packageRoot)) { continue }
+    $installedRoot = Join-Path $output $folderName
+    New-Item -ItemType Directory -Path $installedRoot -Force | Out-Null
+    Get-ChildItem -LiteralPath $packageRoot -Recurse -File | ForEach-Object {
+        $relative = $_.FullName.Substring($packageRoot.TrimEnd('\').Length + 1)
+        if ($folderName -ne "MiniApps" -or [System.IO.Path]::GetFileName($relative) -notin @("storage.json", "storage.json.bak")) {
+            $destination = Join-Path $installedRoot $relative
+            New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+            Copy-Item -LiteralPath $_.FullName -Destination $destination -Force
+        }
+    }
+}
 Remove-Item -LiteralPath $staging -Recurse -Force
 if (Test-Path $userDataBackup) { Move-Item -LiteralPath $userDataBackup -Destination $userData }
 if (Test-Path $webViewUserDataBackup) { Move-Item -LiteralPath $webViewUserDataBackup -Destination $webViewUserData }

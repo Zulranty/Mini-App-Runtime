@@ -89,7 +89,7 @@ class MiniAppInstaller(private val context: Context) {
     private fun readManifest(dir: File) = MiniAppManifest.parse(JSONObject(File(dir, "manifest.json").readText()))
     private fun writeManifest(file: File, m: MiniAppManifest) {
         file.writeText(JSONObject().put("id", m.id).put("name", m.name).put("version", m.version).put("sdkVersion", m.sdkVersion).put("entry", m.entry).apply {
-            m.description?.let { put("description", it) }; m.author?.let { put("author", it) }; m.icon?.let { put("icon", it) }; m.minRuntimeVersion?.let { put("minRuntimeVersion", it) }; m.network?.let { n -> put("network", JSONObject().put("allow",JSONArray(n.allow.toList())).put("allowSubdomains",n.allowSubdomains).put("allowHttp",n.allowHttp).put("allowLocalNetwork",n.allowLocalNetwork)) }; put("permissions", JSONArray(m.permissions.toList()))
+            m.description?.let { put("description", it) }; m.author?.let { put("author", it) }; m.icon?.let { put("icon", it) }; m.minRuntimeVersion?.let { put("minRuntimeVersion", it) }; m.network?.let { n -> put("network", JSONObject().put("allow",JSONArray(n.allow.toList())).put("allowSubdomains",n.allowSubdomains).put("allowHttp",n.allowHttp).put("allowLocalNetwork",n.allowLocalNetwork).put("discoveryServices",JSONArray(n.discoveryServices.sorted()))) }; put("permissions", JSONArray(m.permissions.toList()))
         }.toString(2))
     }
 }

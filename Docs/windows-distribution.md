@@ -16,7 +16,13 @@ When a build is launched interactively and fails, its script leaves the console 
 
 Android uses the committed Gradle Wrapper in `build/Android`, which downloads Gradle 8.14 on its first run. Windows restores NuGet packages automatically when its cache is absent. The first build therefore needs internet access.
 
-Before building, the scripts check their prerequisites: Android requires JDK 17+, Android SDK Platform 35, and the committed Wrapper; Windows requires .NET SDK 8+ and Inno Setup 6+.
+An Android release requires a permanent signing keystore supplied through
+`MINIAPPS_ANDROID_KEYSTORE`, `MINIAPPS_ANDROID_STORE_PASSWORD`,
+`MINIAPPS_ANDROID_KEY_ALIAS`, and `MINIAPPS_ANDROID_KEY_PASSWORD`. The build
+fails without these values or the keystore file. Never publish an APK signed
+with a temporary or debug key; Android updates require the same signing key.
+
+Before building, the scripts check their prerequisites: Android requires JDK 17+, Android SDK Platform 35, the committed Wrapper, and release signing credentials; Windows requires .NET SDK 8+ and Inno Setup 6+.
 
 The `build` directory stores the build configurations and scripts. Re-creatable intermediates are written to `Cache` and may be deleted; final distributables remain in `Output`.
 
@@ -47,7 +53,8 @@ The uninstaller files `unins000.exe` and `unins000.dat` are stored in `Data`.
 
 The installer is fully offline: it updates the selected installation using only files inside `MiniAppsSetup.exe`.
 
-- `DefaultContent/MiniApps` and `DefaultContent/Interface` are copied into one self-contained Windows publish result as `MiniApps` and `Interface`; Inno Setup builds the installer from that same result without a second publish. Before Inno Setup runs, the build verifies that the executable, the default interface, and at least one mini-app manifest are present.
+- The Windows executable is published once. Inno Setup uses a separate clean staging directory containing that executable, runtime files, and packaged content from `DefaultContent/MiniApps` and `DefaultContent/Interface`. Local `Output/Windows` configuration, WebView2 profile, private data, custom apps and interfaces, and all `storage.json` files are excluded from the installer. Before Inno Setup runs, the build verifies that the executable, the default interface, and at least one mini-app manifest are present.
+- Inno Setup writes into `Cache/Windows/installer-output`; `Output/Windows/MiniAppsSetup.exe` is replaced only after compilation succeeds. An interrupted publish restores saved configuration and WebView2 profile data on the next run.
 - An update refreshes built-in mini-app code and manifests while preserving `storage.json`; user-added mini-app folders and `.runtime` are kept. Each bundled interface subdirectory needs an `index.html`; `DefaultContent/Interface/default/index.html` is the bundled default. Packaged interface files are refreshed during an update, while additional custom interface folders are not removed.
 - Runtime binaries and libraries are refreshed in `Data`; `Data/User` and `Data/WebView2/UserData` are preserved. `Config` is also preserved, including window size, selected interface, and mini-app permission settings. Imported ZIP and HTML packages are installed directly and are not retained as source copies.
 

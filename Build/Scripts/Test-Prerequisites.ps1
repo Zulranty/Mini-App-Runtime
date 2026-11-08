@@ -1,6 +1,7 @@
 param(
     [ValidateSet("Android", "Windows")]
-    [string]$Target
+    [string]$Target,
+    [switch]$LocalSigning
 )
 
 $ErrorActionPreference = "Stop"
@@ -30,6 +31,17 @@ if ($Target -eq "Android") {
     if (-not $androidSdk) { Fail "Android SDK was not found. Set ANDROID_SDK_ROOT or ANDROID_HOME." }
     if (-not (Test-Path -LiteralPath (Join-Path $androidSdk "platforms\android-35"))) {
         Fail "Android SDK Platform 35 is required: $androidSdk"
+    }
+
+    if (-not $LocalSigning) {
+        foreach ($name in @("MINIAPPS_ANDROID_KEYSTORE", "MINIAPPS_ANDROID_STORE_PASSWORD", "MINIAPPS_ANDROID_KEY_ALIAS", "MINIAPPS_ANDROID_KEY_PASSWORD")) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+                Fail "Android release signing requires $name. The debug key must not be used for distribution."
+            }
+        }
+        if (-not (Test-Path -LiteralPath $env:MINIAPPS_ANDROID_KEYSTORE -PathType Leaf)) {
+            Fail "Android release signing keystore was not found at MINIAPPS_ANDROID_KEYSTORE."
+        }
     }
 
     Write-Host "Android prerequisites OK: $javacVersion; SDK $androidSdk"

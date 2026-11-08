@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESP Light</title><link rel="stylesheet" href="styles.css">
+<script src="client.js" defer></script><script src="lamp-view.js" defer></script><script src="presets.js" defer></script><script src="app.js" defer></script>
+</head>
+<body><main>
+<section id="connection-screen">
+  <div class="section-title"><h1>Подключение</h1><button id="search" class="secondary">Найти</button></div>
+  <p id="status" role="status" aria-live="polite">Подготовка…</p>
+  <button id="grant" hidden>Разрешить поиск в сети</button>
+  <label id="device-label" hidden>Лампа<select id="devices"></select></label>
+  <details open><summary>Как подключить</summary><p>Прошейте MiniAppLight. Если Wi‑Fi уже настроен, лампа появится автоматически. При первой настройке подключитесь к точке ESP32 и откройте http://192.168.4.1. Имя и пароль точки — в Serial Monitor (115200). Выберите домашнюю сеть, затем верните ПК или телефон в ту же сеть.</p><p>Управление без ключа доступно всем устройствам, которые могут подключиться к лампе.</p></details>
+</section>
+<section id="control-screen" hidden>
+  <div class="section-title"><span id="lamp-name"></span><button id="sync" class="secondary" title="Загрузить режим, яркость, цвет и LED из ESP">Синхронизировать</button></div>
+  <p id="control-status" role="status" aria-live="polite" hidden></p>
+  <button id="presets-nav" type="button" class="secondary page-nav">Пресеты</button>
+  <fieldset id="controls" disabled>
+    <div id="editor-screen">
+    <button id="power" class="power" type="button" aria-pressed="false">Включить свет</button>
+    <label class="range-label" for="brightness">Яркость <output id="brightness-value">50%</output></label>
+    <div class="brightness-row"><button id="brightness-minus" type="button" class="secondary" aria-label="Уменьшить яркость на 1%">−</button><input id="brightness" type="range" min="0" max="100" step="1" value="50"><button id="brightness-plus" type="button" class="secondary" aria-label="Увеличить яркость на 1%">+</button></div>
+    <label>Режим<select id="effect"><option value="color">Цвет</option><option value="wheel">Цветовой круг</option><option value="rainbow">Радуга</option><option value="fire">Огонь</option><option value="custom">Кастом</option><option value="timer">Таймер</option></select></label>
+    <div id="color-panel" class="mode-panel"><div id="palette" class="palette" aria-label="Базовые цвета"></div></div>
+    <div id="wheel-panel" class="mode-panel" hidden><canvas id="wheel" aria-label="Цветовой круг"></canvas><label class="color-input">Цвет<input id="wheel-color" type="color" value="#ff8844"></label></div>
+    <div id="rainbow-panel" class="mode-panel" hidden><div class="effect-preview rainbow-preview" aria-label="Радуга"></div><label>Направление<select id="rainbow-mode"><option value="forward">Вперёд</option><option value="side">Вбок</option><option value="down">Вниз</option><option value="up">Вверх</option></select></label></div>
+    <div id="fire-panel" class="mode-panel" hidden>
+      <div class="effect-preview fire-preview" aria-label="Огонь"></div>
+      <label class="color-input">Цвет пламени<input id="fire-color" type="color" value="#ff6000"></label>
+      <label class="range-label">Скорость <output id="fire-speed-value">50%</output><input id="fire-speed" type="range" min="1" max="100" value="50"></label>
+      <label class="range-label">Высота пламени <output id="fire-height-value">50%</output><input id="fire-height" type="range" min="1" max="100" value="50"></label>
+      <label class="range-label">Ширина языков <output id="fire-width-value">50%</output><input id="fire-width" type="range" min="1" max="100" value="50"></label>
+      <label class="range-label">Плавность <output id="fire-smooth-value">50%</output><input id="fire-smooth" type="range" min="0" max="100" value="50"></label>
+      <label class="range-label">Жар <output id="fire-intensity-value">50%</output><input id="fire-intensity" type="range" min="0" max="100" value="50"></label>
+      <button id="fire-reset" type="button" class="secondary wide-action">По умолчанию</button>
+    </div>
+    <div id="custom-panel" class="mode-panel" hidden>
+      <canvas id="lamp" tabindex="0" role="img" aria-label="3D-лампа. Перетаскивайте для вращения; клик по LED применяет цвет кисти."></canvas>
+      <div class="rotate-row"><button id="rotate-left" type="button" class="secondary" aria-label="Повернуть влево">↶</button><span>Потяните для вращения</span><button id="rotate-right" type="button" class="secondary" aria-label="Повернуть вправо">↷</button></div>
+      <div class="pixel-row"><label>Светодиод<select id="led-select"><option value="">Выберите LED</option></select></label><button id="paint-led" type="button" class="secondary">Нанести</button></div>
+      <div id="selected-panel" hidden><div class="pixel-row"><label class="color-input">Цвет LED <span id="selected-id"></span><input id="pixel-color" type="color" value="#000000"></label><button id="pixel-off" type="button" class="secondary">Погасить LED</button></div></div>
+      <div class="brush"><label class="color-input">Кисть<input id="brush-color" type="color" value="#ff8844"></label><button id="clear-leds" type="button" class="secondary">Очистить</button></div>
+      <div id="brush-palette" class="palette" aria-label="Цвет кисти"></div>
+    </div>
+    <div id="timer-panel" class="mode-panel" hidden>
+      <div class="timer-inputs"><label>Часы<input id="timer-hours" type="number" min="0" max="23" step="1" value="0" inputmode="numeric"></label><label>Минуты<input id="timer-minutes" type="number" min="0" max="59" step="1" value="30" inputmode="numeric"></label></div>
+      <output id="timer-status" class="timer-status" aria-live="polite">Таймер не запущен</output>
+      <div class="timer-actions"><button id="timer-start" type="button">Запустить таймер</button><button id="timer-cancel" type="button" class="secondary">Отменить</button></div>
+    </div>
+    <button id="save-preset" type="button" class="secondary wide-action">Сохранить пресет</button>
+    </div>
+    <div id="presets-panel" hidden><h2>Пресеты</h2><p id="presets-empty">Сохраните настройки любого режима, чтобы они появились здесь.</p><div id="presets-list"></div><p id="preset-current" role="status"></p></div>
+    <form id="preset-name-form" hidden><label>Название пресета<input id="preset-name" type="text" maxlength="60" required autocomplete="off"></label><div class="timer-actions"><button type="submit">Сохранить</button><button id="preset-name-cancel" type="button" class="secondary">Отмена</button></div></form>
+  </fieldset>
+</section>
+</main></body></html>
