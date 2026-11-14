@@ -66,7 +66,7 @@ On Android it is created at:
 
 `Interface` is a collection of launcher themes. Each subfolder is one interface and must contain `index.html`; it may be a self-contained HTML file or a set of HTML/CSS/JS files. The active interface is selected in **Settings → Interface**. ZIP and HTML files placed directly in `Interface` are scanned into interface folders; the same formats can be added through the native file picker.
 
-Both hosts package the self-contained Default and Metro launcher interfaces. Android copies Default to the shared folder if the default interface file is missing or empty, and upgrades known older stock HTML in installed theme folders. Recognized Russian Default and Metro templates are updated in place with the Russian Telegram settings tab. The update keeps the active interface, its settings, and other files in its folder. Older Metro templates that still use the Metro settings layout receive the Telegram tab from the runtime when Settings opens. Imported ZIP/folder interfaces may include additional files when their own `index.html` uses them.
+Both hosts package Default and Metro from `DefaultContent/Interface`. Each theme has one self-contained `index.html` with English and Russian dictionaries. Android loads the built-in pages from the APK. Windows loads the pages installed in the interface folders. Both reserve the IDs `default` and `Metro-Interface` and keep per-theme settings in the interface folder. Imported ZIP or folder interfaces may include additional files referenced by their `index.html`.
 
 On Windows it is created beside `MiniApps.exe` in the selected installation folder:
 
@@ -78,15 +78,16 @@ The same `Interface/<name>/index.html` layout, active-interface selection, root 
 
 On Windows, the installer packages every interface from `DefaultContent/Interface`. Each interface is a folder with `index.html`; the default package is `DefaultContent/Interface/default/index.html`. Custom installed interface folders are preserved unless their packaged files share the same path.
 
-If the selected interface is removed outside the runtime, the next launch automatically selects and saves the first remaining valid interface (alphabetically by folder name). A valid interface is a subfolder containing `index.html`.
+If the selected interface is removed outside the runtime, Android selects Default on the next launch. Windows selects the first remaining valid interface alphabetically. A valid interface is a subfolder containing `index.html`.
 
 ## Language
 
 Select English or Russian in the launcher settings. In Metro, the control is
 under **Personalization**. In Default, it is under **About**. On first launch,
 MiniApps uses Russian for a Russian system locale and English otherwise.
-The preference is saved per installation. Stock templates switch languages
-when the launcher reloads and keep their interface folder and settings.
+The preference is saved per installation. On reload, Default and Metro read
+`launcher.getLanguage()` and select their dictionary in the same HTML page.
+Labels, accessibility attributes, menus, and formatted values use that language.
 
 Custom launcher interfaces can read `launcher.getLanguage()` and use
 `launcher.mountLanguageSettings(container)` to add the selector. Their own
@@ -221,7 +222,7 @@ and scan behavior, see [Mini-app format](mini-app-format.md).
 
 The Android APK includes the Android-compatible built-in mini-apps and the Telegram shared module. After a fresh install or an APK update, open MiniApps and grant file access if prompted. MiniApps applies the bundled packages before showing the app list. This includes Shopping List, Unofficial Telegram and Telegram Cloud. If the installed mini-app has a higher version, MiniApps keeps it. A failed package is retried when the launcher next starts.
 
-Install the new APK over the existing MiniApps installation to retain private and secure storage. MiniApps updates each matching app in its existing folder and retains its public data. Localized entries in a bundled package share one app ID and one set of data.
+Install the new APK over the existing MiniApps installation to retain private and secure storage. MiniApps updates each matching app in its existing folder and retains its public data. All languages of an app share its ID and data.
 
 The app-card menu can delete or share an app and share its public `storage.json`. App sharing creates a single HTML file only for a self-contained HTML app with an embedded manifest; otherwise it creates a ZIP containing the app code. User data, including `storage.json`, is excluded. Data sharing exports only public `storage.json`. Deletion also clears private storage and stored permission decisions. Android uses the system Sharesheet with a `content://` FileProvider; Windows copies a file to the clipboard for pasting into Explorer or another application. Windows `mini.share.text()` and `mini.share.file()` also copy their text or file payload to the clipboard. Private storage is never exported.
 
@@ -242,10 +243,8 @@ The server choice applies when you next open Unofficial Telegram directly.
 The **Unofficial Telegram** app card shows the client version. Use the Telegram
 settings action to reinstall the included module and client when needed.
 
-Both built-in launcher interfaces include **Telegram** in the existing
-**Settings** screen. Android upgrades recognized older Default and Metro
-templates in place, keeping the active interface and its settings. Custom
-interfaces can add the Telegram controls to their settings using the launcher API.
+Both built-in launcher interfaces include **Telegram** in **Settings**.
+Custom interfaces can add the Telegram controls using the launcher API.
 
 After successful installation, choose **Yes** to restart MiniApps immediately
 or **No** to keep working. Custom launcher interfaces can use
@@ -258,7 +257,7 @@ to add the two switches and the login-log viewer to a custom Telegram settings p
 
 On Android, interfaces reside in `MiniApps/Interface/<interface-id>/`; on Windows, they reside in `Interface/<interface-id>/` beside `MiniApps.exe`. Select the active interface in **Settings → Interface**; it is used by both the launcher and mini-app app bars. The built-in `default` contains only `index.html`, with its CSS and launcher JavaScript embedded. HTML and ZIP files placed directly in `Interface/` are scanned as new interfaces; the same import is available from **Add interface**. Folder and ZIP interfaces may contain additional files. An interface-specific mini-app app bar is stored beside the interface as `appbar.css` and `appbar.js`.
 
-If the active interface is removed manually, the runtime selects and saves the first valid interface alphabetically on the next launch. A valid interface folder contains `index.html`.
+If the active interface is removed manually, Android selects Default and Windows selects the first valid interface alphabetically on the next launch. A valid interface folder contains `index.html`.
 
 
 # Local device presets
@@ -522,9 +521,11 @@ MiniApps/com.example.hsv/
 
 ## Localized mini-app packages
 
-Keep translations and localized pages inside the mini-app ZIP. All languages
-share the same app ID, permissions, version, storage and Telegram connection.
-A package can have one or several localized HTML entry points:
+Keep translation dictionaries inside the mini-app package. Use one HTML page
+and select its dictionary using `preferred` from `await mini.locale.get()`.
+Set the document's `lang` to the chosen language. All languages share the same
+app ID, permissions, version, storage and Telegram connection. Use the manifest
+to translate the name and description displayed by the launcher:
 
 ```json
 {
@@ -533,29 +534,22 @@ A package can have one or several localized HTML entry points:
   "version": "1.0.0",
   "sdkVersion": 2,
   "entry": "index.html",
-  "defaultLanguage": "en",
-  "locales": {
-    "en": { "entry": "index.html" },
-    "ru": { "entry": "ru/index.html", "name": "Заметки" }
+  "translations": {
+    "ru": { "name": "Заметки" }
   }
 }
 ```
 
-The runtime chooses an exact tag match, then removes trailing subtags until
-it finds a match. If none exists, it uses `defaultLanguage`. The default
-language must be declared and its entry must match the top-level `entry`.
-Localized entries must be existing `.html` files inside the package with
-ASCII letters, digits, hyphens, underscores, dots and slashes in their paths.
-Up to 32 entries are supported. Locale tags use letters and digits separated
-by hyphens and are matched case-insensitively. `name` and `description` are
-optional per locale. Packages without localization metadata still use their
-original entry. A single HTML app can use `mini.locale.get()` to select its
-own embedded translations.
+`translations` is optional and works in ZIP manifests and embedded manifests.
+Its supported keys are `en` and `ru`. Each translation contains `name`,
+`description`, or both. A missing field uses its top-level value. Translated
+names and descriptions must be nonblank strings of at most 256 and 1024
+characters, respectively. The top-level `entry` determines the page for
+every language.
 
-Set `lang` on each localized HTML page. Keep translated UI text separate from
-user content and use shared scripts and styles where possible. Build every
-language into the same ZIP so switching works offline. Importing that ZIP
-over an earlier language-specific package with the same ID preserves its data.
+Keep translated UI text separate from user content. Bundle every dictionary
+with the page so switching works offline. Importing an update with the same
+app ID preserves its data.
 
 ## HTML without manifest
 
@@ -956,7 +950,7 @@ Launcher interfaces are editable HTML/CSS/JavaScript packages. The active interf
 | `Code/Android/app/` | Kotlin Android host |
 | `Code/Windows/` | .NET 10 WinForms and WebView2 host |
 | `Code/Framework/shared/` | JavaScript bridges shared by both hosts |
-| `DefaultContent/` | Built-in mini-apps and interfaces packaged for Windows |
+| `DefaultContent/` | Built-in mini-apps and launcher themes for Windows and Android |
 | `Build/` | Build configuration, scripts, and platform packaging files |
 | `Cache/` | Re-creatable local build outputs and caches |
 | `Output/` | Final distribution artifacts |
@@ -1063,11 +1057,10 @@ Both `version` and `minRuntimeVersion` use SemVer (`major.minor.patch`, optional
 
 ## Application information
 
-`mini.app.getAppInfo()` returns app metadata, using the selected localized name and entry when available, plus ISO-8601 `installedAt` and `updatedAt` timestamps. `appSizeBytes` excludes persistent data; `dataSizeBytes` includes public, private, and secure runtime storage. The separate `publicDataSizeBytes`, `privateDataSizeBytes`, and `secureDataSizeBytes` fields provide a size breakdown.
+`mini.app.getAppInfo()` returns app metadata, using the translated name and description when available, plus ISO-8601 `installedAt` and `updatedAt` timestamps. `appSizeBytes` excludes persistent data; `dataSizeBytes` includes public, private, and secure runtime storage. The separate `publicDataSizeBytes`, `privateDataSizeBytes`, and `secureDataSizeBytes` fields provide a size breakdown.
 
-`await mini.locale.get()` returns `{ preferred, resolved }`. `preferred` is the
-launcher language at the start of the mini-app. `resolved` is the matched
-package language, or `null` for a legacy package without localized entries.
+`await mini.locale.get()` returns `{ preferred }`. `preferred` is the launcher
+language (`en` or `ru`) at the start of the mini-app.
 The same object is available as `locale` in `mini.app.getLaunchParams()`.
 Apps can use `preferred` to choose their own dictionary. A running mini-app
 keeps its launch language until it is reopened.

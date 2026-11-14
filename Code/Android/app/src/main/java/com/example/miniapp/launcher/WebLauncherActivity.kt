@@ -75,8 +75,17 @@ class WebLauncherActivity : AppCompatActivity() {
         val id=pendingInterfaceId ?: return@registerForActivityResult; pendingInterfaceId=null
         if(uri==null){reply(id,false,null,"source_file_not_found","No file selected");return@registerForActivityResult}
         val name=contentResolver.query(uri,null,null,null,null)?.use{cursor->cursor.takeIf{it.moveToFirst()}?.let{it.getString(it.getColumnIndex(OpenableColumns.DISPLAY_NAME))}}?:"interface.html"
-        val staged=File(cacheDir,"interface-${System.nanoTime()}-$name")
-        thread { try { contentResolver.openInputStream(uri)!!.use{input->staged.outputStream().use(input::copyTo)}; interfaces.install(staged); reply(id,true,JSONObject.NULL,null,null) } catch(e:Exception) { reply(id,false,null,"source_file_invalid",e.message?:"Interface import failed") } finally { staged.delete() } }
+        thread {
+            var staged: File? = null
+            try {
+                val source = File.createTempFile("interface-", ".tmp", cacheDir)
+                staged = source
+                contentResolver.openInputStream(uri)!!.use { input -> source.outputStream().use(input::copyTo) }
+                interfaces.install(source, name)
+                reply(id,true,JSONObject.NULL,null,null)
+            } catch(e:Exception) { reply(id,false,null,"source_file_invalid",e.message?:"Interface import failed") }
+            finally { staged?.delete() }
+        }
     }
     override fun onCreate(state: Bundle?) { super.onCreate(state); onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) { override fun handleOnBackPressed() = requestLauncherBack() }); ensureAccess(); web = WebView(this); WebOrigin.applySystemInsets(web); setContentView(web); web.settings.apply { javaScriptEnabled=true; domStorageEnabled=false; mixedContentMode=android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW; allowFileAccess=false; allowContentAccess=false; allowFileAccessFromFileURLs=false; allowUniversalAccessFromFileURLs=false }; if (WebOrigin.supported()) { WebOrigin.listen(web, "LauncherRuntime", WebOrigin.LAUNCHER_HOST, Bridge()::call); WebOrigin.listen(web, "InterfaceRuntime", WebOrigin.LAUNCHER_HOST, InterfaceBridge()::call) }; web.webViewClient=InterfaceClient() }
     override fun onResume() {
@@ -322,8 +331,7 @@ class WebLauncherActivity : AppCompatActivity() {
             if (!file.extension.equals("html", true))
                 return WebResourceResponse(if (file.extension.equals("css", true)) "text/css" else "application/javascript",
                     "utf-8", file.inputStream())
-            val source = if (relative == "index.html") interfaces.openLauncherPage(file).bufferedReader().use { it.readText() }
-                else file.readText()
+            val source = if (relative == "index.html") interfaces.readIndex(root) else file.readText()
             val injectionPoint = endOfHead.find(source)?.range?.first ?: doctype.find(source)?.range?.last?.plus(1) ?: 0
             val bridge = "<script src=\"https://${WebOrigin.ASSET_HOST}/launcher-runtime.js\"></script>"
             val html = source.substring(0, injectionPoint) + bridge + source.substring(injectionPoint)

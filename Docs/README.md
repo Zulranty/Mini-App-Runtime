@@ -211,7 +211,7 @@ Launcher interfaces are editable HTML/CSS/JavaScript packages. The active interf
 | `Code/Android/app/` | Kotlin Android host |
 | `Code/Windows/` | .NET 10 WinForms and WebView2 host |
 | `Code/Framework/shared/` | JavaScript bridges shared by both hosts |
-| `DefaultContent/` | Built-in mini-apps and interfaces packaged for Windows |
+| `DefaultContent/` | Built-in mini-apps and launcher themes for Windows and Android |
 | `Build/` | Build configuration, scripts, and platform packaging files |
 | `Cache/` | Re-creatable local build outputs and caches |
 | `Output/` | Final distribution artifacts |

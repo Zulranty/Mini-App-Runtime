@@ -1,45 +1,40 @@
 package com.example.miniapp.model
 
 import org.json.JSONObject
-import com.example.miniapp.launcher.AppLanguage
 import com.example.miniapp.installer.InstallException
 
 data class NetworkConfig(val allow:Set<String>, val allowSubdomains:Boolean=false, val allowHttp:Boolean=false, val allowLocalNetwork:Boolean=false, val discoveryServices:Set<String> = emptySet())
-data class LocalizedEntry(val entry: String, val name: String?, val description: String?)
+data class AppTranslation(val name: String?, val description: String?)
 data class MiniAppManifest(val id:String,val name:String,val version:String,val sdkVersion:Int,val entry:String,val description:String?,val author:String?,val icon:String?,val permissions:Set<String>,val minRuntimeVersion:String?=null,val network:NetworkConfig?=null,
-    val defaultLanguage:String?=null, val locales:Map<String,LocalizedEntry> = emptyMap(), val language:String?=null) {
+    val translations: Map<String, AppTranslation> = emptyMap()) {
  fun localize(preference: String): MiniAppManifest {
-    val fallback = defaultLanguage ?: return this
-    val resolved = AppLanguage.match(preference, locales.keys, fallback)
-    val locale = locales.getValue(resolved)
-    return copy(entry = locale.entry, name = locale.name ?: name, description = locale.description ?: description, language = resolved)
+    val translation = translations[preference] ?: return this
+    return copy(name = translation.name ?: name, description = translation.description ?: description)
  }
 
  companion object {
-    private val localeEntry = Regex("[A-Za-z0-9_./-]{1,240}")
-    private fun invalidLocales(): Nothing = throw InstallException("Invalid localized app entries")
+    private fun invalidTranslations(): Nothing = throw InstallException("Invalid app translations")
 
-    private fun readLocales(json: JSONObject, entry: String): Pair<String?, Map<String, LocalizedEntry>> {
-        if (json.isNull("locales") && json.isNull("defaultLanguage")) return null to emptyMap()
-        val definitions = json.optJSONObject("locales") ?: invalidLocales()
-        val fallback = AppLanguage.normalize(json.opt("defaultLanguage") as? String) ?: invalidLocales()
-        if (definitions.length() !in 1..32) invalidLocales()
-        val entries = buildMap {
-            for (tag in definitions.keys()) {
-                val language = AppLanguage.normalize(tag) ?: invalidLocales()
-                val definition = definitions.optJSONObject(tag) ?: invalidLocales()
-                val path = definition.opt("entry") as? String ?: invalidLocales()
-                if (!localeEntry.matches(path) || !path.endsWith(".html", ignoreCase = true) ||
-                    path.split('/').any { it.isEmpty() || it == "." || it == ".." } || containsKey(language)) invalidLocales()
-                fun optionalText(key: String, limit: Int): String? {
-                    if (definition.isNull(key)) return null
-                    return (definition.opt(key) as? String)?.takeIf { it.length <= limit } ?: invalidLocales()
-                }
-                put(language, LocalizedEntry(path, optionalText("name", 256), optionalText("description", 1024)))
+    private fun readTranslations(json: JSONObject): Map<String, AppTranslation> {
+        if (json.isNull("translations")) return emptyMap()
+        val definitions = json.optJSONObject("translations") ?: invalidTranslations()
+        return buildMap {
+            for (language in definitions.keys()) {
+                if (language != "en" && language != "ru") invalidTranslations()
+                val fields = definitions.optJSONObject(language) ?: invalidTranslations()
+                if (fields.keys().asSequence().any { it != "name" && it != "description" }) invalidTranslations()
+                val name = readText(fields, "name", 256)
+                val description = readText(fields, "description", 1024)
+                if (name == null && description == null) invalidTranslations()
+                put(language, AppTranslation(name, description))
             }
         }
-        if (entries[fallback]?.entry != entry) invalidLocales()
-        return fallback to entries
+    }
+
+    private fun readText(fields: JSONObject, key: String, limit: Int): String? {
+        if (!fields.has(key)) return null
+        return (fields.opt(key) as? String)?.takeIf { it.isNotBlank() && it.length <= limit }
+            ?: invalidTranslations()
     }
 
     fun parse(json: JSONObject): MiniAppManifest {
@@ -48,11 +43,10 @@ data class MiniAppManifest(val id:String,val name:String,val version:String,val 
                 n.optBoolean("allowLocalNetwork", false), strings(n, "discoveryServices"))
         }
         val entry = json.optString("entry")
-        val (fallback, locales) = readLocales(json, entry)
         return MiniAppManifest(json.optString("id"), json.optString("name"), json.optString("version"),
             json.optInt("sdkVersion", -1), entry, json.optString("description").ifBlank { null },
             json.optString("author").ifBlank { null }, json.optString("icon").ifBlank { null }, strings(json, "permissions"),
-            json.optString("minRuntimeVersion").ifBlank { null }, network, fallback, locales)
+            json.optString("minRuntimeVersion").ifBlank { null }, network, readTranslations(json))
     }
 
     private fun strings(json: JSONObject, key: String) = buildSet {

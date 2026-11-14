@@ -339,7 +339,7 @@ internal sealed class WebAppView : UserControl
         return RuntimeLog.Write(manifest, parameters);
     }
 
-    private JsonObject LocaleInfo() => new() { ["preferred"] = preferredLanguage, ["resolved"] = manifest.Language };
+    private JsonObject LocaleInfo() => new() { ["preferred"] = preferredLanguage };
 
     private JsonNode Capabilities()
     {

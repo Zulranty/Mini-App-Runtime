@@ -10,7 +10,7 @@ On Android it is created at:
 
 `Interface` is a collection of launcher themes. Each subfolder is one interface and must contain `index.html`; it may be a self-contained HTML file or a set of HTML/CSS/JS files. The active interface is selected in **Settings → Interface**. ZIP and HTML files placed directly in `Interface` are scanned into interface folders; the same formats can be added through the native file picker.
 
-Both hosts package the self-contained Default and Metro launcher interfaces. Android copies Default to the shared folder if the default interface file is missing or empty, and upgrades known older stock HTML in installed theme folders. Recognized Russian Default and Metro templates are updated in place with the Russian Telegram settings tab. The update keeps the active interface, its settings, and other files in its folder. Older Metro templates that still use the Metro settings layout receive the Telegram tab from the runtime when Settings opens. Imported ZIP/folder interfaces may include additional files when their own `index.html` uses them.
+Both hosts package Default and Metro from `DefaultContent/Interface`. Each theme has one self-contained `index.html` with English and Russian dictionaries. Android loads the built-in pages from the APK. Windows loads the pages installed in the interface folders. Both reserve the IDs `default` and `Metro-Interface` and keep per-theme settings in the interface folder. Imported ZIP or folder interfaces may include additional files referenced by their `index.html`.
 
 On Windows it is created beside `MiniApps.exe` in the selected installation folder:
 
@@ -22,15 +22,16 @@ The same `Interface/<name>/index.html` layout, active-interface selection, root 
 
 On Windows, the installer packages every interface from `DefaultContent/Interface`. Each interface is a folder with `index.html`; the default package is `DefaultContent/Interface/default/index.html`. Custom installed interface folders are preserved unless their packaged files share the same path.
 
-If the selected interface is removed outside the runtime, the next launch automatically selects and saves the first remaining valid interface (alphabetically by folder name). A valid interface is a subfolder containing `index.html`.
+If the selected interface is removed outside the runtime, Android selects Default on the next launch. Windows selects the first remaining valid interface alphabetically. A valid interface is a subfolder containing `index.html`.
 
 ## Language
 
 Select English or Russian in the launcher settings. In Metro, the control is
 under **Personalization**. In Default, it is under **About**. On first launch,
 MiniApps uses Russian for a Russian system locale and English otherwise.
-The preference is saved per installation. Stock templates switch languages
-when the launcher reloads and keep their interface folder and settings.
+The preference is saved per installation. On reload, Default and Metro read
+`launcher.getLanguage()` and select their dictionary in the same HTML page.
+Labels, accessibility attributes, menus, and formatted values use that language.
 
 Custom launcher interfaces can read `launcher.getLanguage()` and use
 `launcher.mountLanguageSettings(container)` to add the selector. Their own

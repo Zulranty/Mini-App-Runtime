@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- Build: metro-v4-interface-settings; equal tiles; stable colors; launcher.getAppInfo; native interface settings -->
-<html lang="en" data-miniapps-telegram-settings>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -729,30 +729,241 @@
   <main class="shell">
     <header class="topbar">
       <div>
-        <h1>Applications</h1>
+        <h1 data-i18n="applicationsTitle">Applications</h1>
       </div>
-      <div class="commands" aria-label="Teams">
-        <button id="addApp" class="command" type="button" aria-label="Add an application" title="Add an application">＋</button>
-        <button id="more" class="command" type="button" aria-label="Menu" title="Menu">⋯</button>
+      <div class="commands" aria-label="Commands" data-i18n-aria-label="commands">
+        <button id="addApp" class="command" type="button" aria-label="Add an application" data-i18n-aria-label="addAnApplication" title="Add an application" data-i18n-title="addAnApplication">＋</button>
+        <button id="more" class="command" type="button" aria-label="Menu" data-i18n-aria-label="menu" title="Menu" data-i18n-title="menu">⋯</button>
       </div>
     </header>
 
     <div class="section-title">
-      <h2>All applications</h2>
+      <h2 data-i18n="allApplications">All applications</h2>
       <span id="appCount"></span>
     </div>
 
     <section id="apps" class="apps" aria-live="polite"></section>
     <section id="empty" class="empty" hidden>
-      <div><strong>It's empty here yet</strong>Add an HTML or ZIP attachment.</div>
+      <div><strong data-i18n="itSEmptyHereYet">It's empty here yet</strong><span data-i18n="addAnHtmlOrZipAttachment">Add an HTML or ZIP attachment.</span></div>
     </section>
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script>
-  (() => {
+  (async () => {
     'use strict';
+
+    const messages = {
+      en: {
+        aboutHelp: "Information about the current runtime and working folder.",
+        aboutTheApplication: "About the application",
+        accentColor: "Accent color",
+        accentHelp: "Select the primary color for buttons, windows, and interface highlights. Application tile colors are assigned separately and saved.",
+        actionsWith: "Actions with ",
+        active: "Active",
+        addAnApplication: "Add an application",
+        addAnHtmlOrZipAttachment: "Add an HTML or ZIP attachment.",
+        addInterface: "Add interface",
+        allApplications: "All applications",
+        allData: "All data",
+        allDetails: "All details",
+        appFew: "applications",
+        appInfoUnavailable: "Runtime did not transmit information about this application.",
+        appInfoUnsupported: "The current runtime version does not provide launcher.getAppInfo().",
+        appMany: "applications",
+        appOne: "application",
+        appSize: "App Size",
+        application: "Application",
+        applicationId: "Application ID",
+        applicationInformation: "Application information",
+        applicationsTitle: "Applications",
+        author: "Author",
+        available: "Available",
+        b: "B",
+        belowIsTheDataFromTheApplicationList: ". Below is the data from the application list.",
+        bytes: " bytes",
+        close: "Close",
+        colorPrefix: "Color ",
+        columnFew: "columns",
+        columnMany: "columns",
+        columnOne: "column",
+        columnsHelp: "The setting is saved and applied to the main screen immediately.",
+        currentlyInUse: "Currently in use",
+        customAccentColor: "Custom accent color",
+        dataSize: "Data size",
+        delete: "Delete",
+        description: "Description",
+        done: "Done",
+        entryPoint: "Entry point",
+        failedToLoad: "Failed to load",
+        fullDetailsCouldNotBeObtained: "Full details could not be obtained: ",
+        fullRuntimeResponseInJson: "Full runtime response in JSON",
+        gb: "GB",
+        icon: "Icon",
+        idNotSpecified: "ID not specified",
+        information: "Information",
+        installTelegram: "Install Telegram",
+        installed: "Installed",
+        interfaces: "Interfaces",
+        interfacesHelp: "Switch installed launcher interfaces or import new HTML/ZIP.",
+        itSEmptyHereYet: "It's empty here yet",
+        kb: "KB",
+        lastUpdate: "Last update",
+        loading: "Loading...",
+        loadingAppInfo: "Getting the full manifest, installation dates and data sizes...",
+        mb: "MB",
+        menu: "Menu",
+        minimumRuntimeVersion: "Minimum runtime version",
+        name: "Name",
+        networkPolicy: "Network Policy",
+        no: "No",
+        numberOfColumns: "Number of columns:",
+        numberOfColumns2: "Number of columns",
+        open: "Open",
+        openInANewWindow: "Open in a new window",
+        openPrefix: "Open ",
+        operationFailed: "Operation failed",
+        permissions: "Permissions",
+        personalization: "Personalization",
+        platform: "Platform",
+        private: "Private",
+        privateData: "Private data",
+        public: "Public",
+        publicData: "Public data",
+        sdkVersion: "SDK Version",
+        secure: "Secure",
+        secureData: "Secure data",
+        select: "Select",
+        settings: "Settings",
+        settingsSaveUnsupported: "The current runtime version does not support saving interface settings.",
+        settingsSections: "Settings sections",
+        shareApp: "Share app",
+        shareData: "Share data",
+        tb: "TB",
+        commands: "Commands",
+        unknownError: "unknown error",
+        untitled: "Untitled",
+        update: "Update",
+        updateTelegram: "Update Telegram",
+        version: "Version",
+        yes: "Yes",
+        zeroBytes: "0 B"
+      },
+      ru: {
+        aboutHelp: "Сведения о текущем runtime и рабочей папке.",
+        aboutTheApplication: "О приложении",
+        accentColor: "Цвет акцента",
+        accentHelp: "Выберите основной цвет кнопок, окон и выделений интерфейса. Цвета плиток приложений назначаются отдельно и сохраняются.",
+        actionsWith: "Действия с ",
+        active: "Активен",
+        addAnApplication: "Добавить приложение",
+        addAnHtmlOrZipAttachment: "Добавьте HTML или ZIP-приложение.",
+        addInterface: "Добавить интерфейс",
+        allApplications: "Все приложения",
+        allData: "Все данные",
+        allDetails: "Все сведения",
+        appFew: "приложения",
+        appInfoUnavailable: "Runtime не передал сведения об этом приложении.",
+        appInfoUnsupported: "Текущая версия runtime не предоставляет launcher.getAppInfo().",
+        appMany: "приложений",
+        appOne: "приложение",
+        appSize: "Размер приложения",
+        application: "Приложение",
+        applicationId: "ID приложения",
+        applicationInformation: "Информация о приложении",
+        applicationsTitle: "Приложения",
+        author: "Автор",
+        available: "Доступен",
+        b: "Б",
+        belowIsTheDataFromTheApplicationList: ". Ниже показаны данные из списка приложений.",
+        bytes: " байт",
+        close: "Закрыть",
+        colorPrefix: "Цвет ",
+        columnFew: "столбца",
+        columnMany: "столбцов",
+        columnOne: "столбец",
+        columnsHelp: "Настройка сохраняется и применяется к главному экрану сразу.",
+        currentlyInUse: "Используется сейчас",
+        customAccentColor: "Свой цвет акцента",
+        dataSize: "Размер данных",
+        delete: "Удалить",
+        description: "Описание",
+        done: "Готово",
+        entryPoint: "Точка входа",
+        failedToLoad: "Не удалось загрузить",
+        fullDetailsCouldNotBeObtained: "Полные сведения получить не удалось: ",
+        fullRuntimeResponseInJson: "Полный ответ runtime в JSON",
+        gb: "ГБ",
+        icon: "Иконка",
+        idNotSpecified: "ID не указан",
+        information: "Информация",
+        installTelegram: "Установить Telegram",
+        installed: "Установлено",
+        interfaces: "Интерфейсы",
+        interfacesHelp: "Переключайте установленные интерфейсы launcher или импортируйте новый HTML/ZIP.",
+        itSEmptyHereYet: "Здесь пока пусто",
+        kb: "КБ",
+        lastUpdate: "Последнее обновление",
+        loading: "Загрузка…",
+        loadingAppInfo: "Получение полного manifest, дат установки и размеров данных…",
+        mb: "МБ",
+        menu: "Меню",
+        minimumRuntimeVersion: "Минимальная версия runtime",
+        name: "Название",
+        networkPolicy: "Сетевая политика",
+        no: "Нет",
+        numberOfColumns: "Количество столбцов:",
+        numberOfColumns2: "Количество столбцов",
+        open: "Открыть",
+        openInANewWindow: "Открыть в новом окне",
+        openPrefix: "Открыть ",
+        operationFailed: "Операция не выполнена",
+        permissions: "Разрешения",
+        personalization: "Персонализация",
+        platform: "Платформа",
+        private: "Приватные",
+        privateData: "Приватные данные",
+        public: "Публичные",
+        publicData: "Публичные данные",
+        sdkVersion: "Версия SDK",
+        secure: "Защищённые",
+        secureData: "Защищённые данные",
+        select: "Выбрать",
+        settings: "Настройки",
+        settingsSaveUnsupported: "Текущая версия runtime не поддерживает сохранение настроек интерфейса.",
+        settingsSections: "Разделы настроек",
+        shareApp: "Поделиться приложением",
+        shareData: "Поделиться данными",
+        tb: "ТБ",
+        commands: "Команды",
+        unknownError: "неизвестная ошибка",
+        untitled: "Без названия",
+        update: "Обновить",
+        updateTelegram: "Обновить Telegram",
+        version: "Версия",
+        yes: "Да",
+        zeroBytes: "0 Б"
+      }
+    };
+
+    let preferredLanguage;
+    try {
+      preferredLanguage = await globalThis.launcher?.getLanguage?.();
+    } catch {
+      // Use the browser language when the runtime does not provide a preference.
+    }
+    const language = /^ru(?:-|$)/i.test(preferredLanguage ?? navigator.language) ? 'ru' : 'en';
+    const t = key => messages[language][key];
+    const pluralRules = new Intl.PluralRules(language);
+    document.documentElement.lang = language;
+    for (const node of document.querySelectorAll('[data-i18n]')) node.textContent = t(node.dataset.i18n);
+    for (const attribute of ['aria-label', 'title', 'placeholder']) {
+      const marker = 'data-i18n-' + attribute;
+      for (const node of document.querySelectorAll('[' + marker + ']')) {
+        node.setAttribute(attribute, t(node.getAttribute(marker)));
+      }
+    }
 
     const DEFAULT_ACCENT = '#0078d7';
     const DEFAULT_COLUMNS = 2;
@@ -858,7 +1069,7 @@
       interfaceSettings = { ...snapshot };
 
       if (typeof launcher.setInterfaceSettings !== 'function') {
-        const error = new Error('The current runtime version does not support saving interface settings.');
+        const error = new Error(t('settingsSaveUnsupported'));
         fail(error);
         return Promise.reject(error);
       }
@@ -928,13 +1139,13 @@
 
     function say(message) {
       clearTimeout(toastTimer);
-      toast.textContent = String(message || 'Done');
+      toast.textContent = String(message || t('done'));
       toast.classList.add('on');
       toastTimer = setTimeout(() => toast.classList.remove('on'), 2600);
     }
 
     function fail(error) {
-      say(error?.message || error?.code || 'Operation failed');
+      say(error?.message || error?.code || t('operationFailed'));
     }
 
     function closeMenu() {
@@ -1002,7 +1213,7 @@
         tile.className = 'app';
         tile.tabIndex = 0;
         tile.setAttribute('role', 'button');
-        tile.setAttribute('aria-label', `Open ${app.name}`);
+        tile.setAttribute('aria-label', `${t('openPrefix')}${app.name}`);
         const color = tileColor(app);
         tile.style.setProperty('--tile-color', color);
         tile.style.setProperty('--tile-foreground', readableText(color));
@@ -1012,7 +1223,7 @@
             <h3>${escapeHtml(app.name)}</h3>
             <small>${escapeHtml(app.version)}${app.description ? ' · ' + escapeHtml(app.description) : ''}</small>
           </div>
-          <button class="dots" type="button" aria-label="Actions with ${escapeHtml(app.name)}">•••</button>`;
+          <button class="dots" type="button" aria-label="${t('actionsWith')} ${escapeHtml(app.name)}">•••</button>`;
 
         tile.onclick = event => {
           if (!event.target.closest('.dots') && !busy) launcher.open(app.id).catch(fail);
@@ -1044,48 +1255,46 @@
       appsRoot.replaceChildren(fragment);
       empty.hidden = list.length > 0;
       appsRoot.hidden = list.length === 0;
-      appCount.textContent = list.length ? `${list.length} ${declension(list.length, ['application', 'applications', 'applications'])}` : '';
+      appCount.textContent = list.length ? `${list.length} ${declension(list.length, [t('appOne'), t('appFew'), t('appMany')])}` : '';
     }
 
     function declension(number, forms) {
-      const n = Math.abs(number) % 100;
-      const n1 = n % 10;
-      if (n > 10 && n < 20) return forms[2];
-      if (n1 > 1 && n1 < 5) return forms[1];
-      if (n1 === 1) return forms[0];
+      const category = pluralRules.select(number);
+      if (category === 'one') return forms[0];
+      if (category === 'few') return forms[1];
       return forms[2];
     }
 
     function showAppMenu(app, x, y) {
       popupMenu(x, y, [
-        ['Open', () => launcher.open(app.id)],
-        typeof launcher.openNewWindow === 'function' ? ['Open in a new window', () => launcher.openNewWindow(app.id)] : null,
-        ['Information', () => openAppInfo(app)],
-        ['Delete', () => launcher.deleteApp(app.id).then(loadApps)],
-        ['Share app', () => launcher.shareApp(app.id)],
-        ['Share data', () => launcher.shareAppData(app.id)]
+        [t('open'), () => launcher.open(app.id)],
+        typeof launcher.openNewWindow === 'function' ? [t('openInANewWindow'), () => launcher.openNewWindow(app.id)] : null,
+        [t('information'), () => openAppInfo(app)],
+        [t('delete'), () => launcher.deleteApp(app.id).then(loadApps)],
+        [t('shareApp'), () => launcher.shareApp(app.id)],
+        [t('shareData'), () => launcher.shareAppData(app.id)]
       ]);
     }
 
     const APP_INFO_LABELS = {
-      name: 'Name',
-      id: 'Application ID',
-      version: 'Version',
-      description: 'Description',
-      author: 'Author',
-      sdkVersion: 'SDK Version',
-      minRuntimeVersion: 'Minimum runtime version',
-      entry: 'Entry point',
-      icon: 'Icon',
-      permissions: 'Permissions',
-      network: 'Network Policy',
-      installedAt: 'Installed',
-      updatedAt: 'Last update',
-      appSizeBytes: 'App Size',
-      dataSizeBytes: 'Data size',
-      publicDataSizeBytes: 'Public data',
-      privateDataSizeBytes: 'Private data',
-      secureDataSizeBytes: 'Secure data'
+      name: t('name'),
+      id: t('applicationId'),
+      version: t('version'),
+      description: t('description'),
+      author: t('author'),
+      sdkVersion: t('sdkVersion'),
+      minRuntimeVersion: t('minimumRuntimeVersion'),
+      entry: t('entryPoint'),
+      icon: t('icon'),
+      permissions: t('permissions'),
+      network: t('networkPolicy'),
+      installedAt: t('installed'),
+      updatedAt: t('lastUpdate'),
+      appSizeBytes: t('appSize'),
+      dataSizeBytes: t('dataSize'),
+      publicDataSizeBytes: t('publicData'),
+      privateDataSizeBytes: t('privateData'),
+      secureDataSizeBytes: t('secureData')
     };
 
     const APP_INFO_ORDER = [
@@ -1105,19 +1314,19 @@
     function formatBytes(value) {
       const bytes = Number(value);
       if (!Number.isFinite(bytes) || bytes < 0) return '—';
-      if (bytes === 0) return '0 B';
-      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      if (bytes === 0) return t('zeroBytes');
+      const units = [t('b'), t('kb'), t('mb'), t('gb'), t('tb')];
       const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
       const amount = bytes / Math.pow(1024, index);
       const digits = index === 0 ? 0 : amount >= 100 ? 0 : amount >= 10 ? 1 : 2;
-      return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: digits }).format(amount)} ${units[index]}`;
+      return `${new Intl.NumberFormat(language, { maximumFractionDigits: digits }).format(amount)} ${units[index]}`;
     }
 
     function formatDate(value) {
       if (!value) return '—';
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return String(value);
-      const formatted = new Intl.DateTimeFormat('en-US', {
+      const formatted = new Intl.DateTimeFormat(language, {
         dateStyle: 'medium',
         timeStyle: 'short'
       }).format(date);
@@ -1129,8 +1338,8 @@ ${String(value)}`;
       if (value === null || value === undefined || value === '') return '—';
       if (key === 'installedAt' || key === 'updatedAt') return formatDate(value);
       if (key.endsWith('SizeBytes')) return `${formatBytes(value)}
-${Number(value).toLocaleString('en-US')} bytes`;
-      if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+${Number(value).toLocaleString(language)}${t('bytes')}`;
+      if (typeof value === 'boolean') return value ? t('yes') : t('no');
       if (Array.isArray(value)) return value.length
         ? value.map(item => typeof item === 'object' ? JSON.stringify(item) : String(item)).join(', ')
         : '—';
@@ -1161,18 +1370,18 @@ ${Number(value).toLocaleString('en-US')} bytes`;
       overlay.innerHTML = `
         <section class="settings-window app-info-window" role="dialog" aria-modal="true" aria-labelledby="appInfoTitle">
           <header class="window-titlebar" style="background:${escapeHtml(baseColor)};color:${escapeHtml(readableText(baseColor))}">
-            <strong id="appInfoTitle">Application information</strong>
-            <button class="window-close" type="button" aria-label="Close">×</button>
+            <strong id="appInfoTitle">${t('applicationInformation')}</strong>
+            <button class="window-close" type="button" aria-label="${t('close')}">×</button>
           </header>
           <div class="app-info-content" aria-busy="true">
             <div class="app-info-hero">
               <div class="app-info-icon" style="--app-info-color:${escapeHtml(baseColor)};--app-info-foreground:${escapeHtml(readableText(baseColor))}" aria-hidden="true">${escapeHtml(initials(app.name))}</div>
               <div>
-                <h2 data-app-info-name>${escapeHtml(app.name ||'Untitled')}</h2>
-                <p data-app-info-id>${escapeHtml(app.id || 'ID not specified')}</p>
+                <h2 data-app-info-name>${escapeHtml(app.name ||t('untitled'))}</h2>
+                <p data-app-info-id>${escapeHtml(app.id || t('idNotSpecified'))}</p>
               </div>
             </div>
-            <div class="app-info-loading">Getting the full manifest, installation dates and data sizes...</div>
+            <div class="app-info-loading">${t('loadingAppInfo')}</div>
             <div data-app-info-body hidden></div>
           </div>
         </section>`;
@@ -1188,7 +1397,7 @@ ${Number(value).toLocaleString('en-US')} bytes`;
       let loadError = null;
       try {
         if (typeof launcher.getAppInfo !== 'function') {
-          throw new Error('The current runtime version does not provide launcher.getAppInfo().');
+          throw new Error(t('appInfoUnsupported'));
         }
         details = normalizeAppInfo(app, await launcher.getAppInfo(app.id));
       } catch (error) {
@@ -1199,8 +1408,8 @@ ${Number(value).toLocaleString('en-US')} bytes`;
 
       const content = overlay.querySelector('.app-info-content');
       const body = overlay.querySelector('[data-app-info-body]');
-      overlay.querySelector('[data-app-info-name]').textContent = details.name || app.name || 'Untitled';
-      overlay.querySelector('[data-app-info-id]').textContent = details.id || app.id || 'ID not specified';
+      overlay.querySelector('[data-app-info-name]').textContent = details.name || app.name || t('untitled');
+      overlay.querySelector('[data-app-info-id]').textContent = details.id || app.id || t('idNotSpecified');
       overlay.querySelector('.app-info-icon').textContent = initials(details.name || app.name);
       overlay.querySelector('.app-info-loading')?.remove();
       content.setAttribute('aria-busy', 'false');
@@ -1209,16 +1418,16 @@ ${Number(value).toLocaleString('en-US')} bytes`;
       if (loadError) {
         const warning = document.createElement('div');
         warning.className = 'app-info-warning';
-        warning.textContent = `Full details could not be obtained: ${loadError?.message || loadError?.code || 'unknown error'}. Below is the data from the application list.`;
+        warning.textContent = `${t('fullDetailsCouldNotBeObtained')}${loadError?.message || loadError?.code || t('unknownError')}${t('belowIsTheDataFromTheApplicationList')}`;
         body.append(warning);
       }
 
       const sizeFields = [
-        ['appSizeBytes', 'Application'],
-        ['dataSizeBytes', 'All data'],
-        ['publicDataSizeBytes', 'Public'],
-        ['privateDataSizeBytes', 'Private'],
-        ['secureDataSizeBytes', 'Secure']
+        ['appSizeBytes', t('application')],
+        ['dataSizeBytes', t('allData')],
+        ['publicDataSizeBytes', t('public')],
+        ['privateDataSizeBytes', t('private')],
+        ['secureDataSizeBytes', t('secure')]
       ].filter(([key]) => Object.prototype.hasOwnProperty.call(details, key));
 
       if (sizeFields.length) {
@@ -1245,13 +1454,13 @@ ${Number(value).toLocaleString('en-US')} bytes`;
       if (!orderedKeys.length) {
         const message = document.createElement('div');
         message.className = 'app-info-empty';
-        message.textContent = 'Runtime did not transmit information about this application.';
+        message.textContent = t('appInfoUnavailable');
         body.append(message);
       } else {
         const section = document.createElement('section');
         section.className = 'app-info-section';
         const title = document.createElement('h3');
-        title.textContent = 'All details';
+        title.textContent = t('allDetails');
         const grid = document.createElement('div');
         grid.className = 'info-grid';
 
@@ -1272,7 +1481,7 @@ ${Number(value).toLocaleString('en-US')} bytes`;
         const raw = document.createElement('details');
         raw.className = 'app-info-raw';
         const summary = document.createElement('summary');
-        summary.textContent = 'Full runtime response in JSON';
+        summary.textContent = t('fullRuntimeResponseInJson');
         const pre = document.createElement('pre');
         try { pre.textContent = JSON.stringify(details, null, 2); }
         catch { pre.textContent = String(details); }
@@ -1287,41 +1496,41 @@ ${Number(value).toLocaleString('en-US')} bytes`;
       overlay.innerHTML = `
         <section class="settings-window" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
           <header class="window-titlebar">
-            <strong id="settingsTitle">Settings</strong>
-            <button class="window-close" type="button" aria-label="Close">×</button>
+            <strong id="settingsTitle">${t('settings')}</strong>
+            <button class="window-close" type="button" aria-label="${t('close')}">×</button>
           </header>
           <div class="settings-layout">
-            <nav class="settings-nav" aria-label="Settings sections">
-              <button type="button" class="active" data-page="personalization">Personalization</button>
-              <button type="button" data-page="interfaces">Interfaces</button>
+            <nav class="settings-nav" aria-label="${t('settingsSections')}">
+              <button type="button" class="active" data-page="personalization">${t('personalization')}</button>
+              <button type="button" data-page="interfaces">${t('interfaces')}</button>
               <button type="button" data-page="telegram">Telegram</button>
-              <button type="button" data-page="about">About the application</button>
+              <button type="button" data-page="about">${t('aboutTheApplication')}</button>
             </nav>
             <div class="settings-content">
               <section class="settings-page" data-settings-page="personalization">
-                <h2>Personalization</h2>
-                <p>Select the primary color for buttons, windows, and interface highlights. Application tile colors are assigned separately and saved.</p>
+                <h2>${t('personalization')}</h2>
+                <p>${t('accentHelp')}</p>
                 <div class="setting-group">
-                  <h3>Accent color</h3>
+                  <h3>${t('accentColor')}</h3>
                   <div class="swatches" id="accentSwatches"></div>
                   <label class="custom-color">
-                    <input id="customAccent" type="color" value="${storedAccent()}" aria-label="Custom accent color">
+                    <input id="customAccent" type="color" value="${storedAccent()}" aria-label="${t('customAccentColor')}">
                     <span id="customAccentValue">${storedAccent().toUpperCase()}</span>
                   </label>
                 </div>
                 <div class="setting-group">
-                  <h3>Number of columns: <span id="columnsCurrent">${storedColumns()}</span></h3>
-                  <div id="columnOptions" class="column-options" aria-label="Number of columns"></div>
-                  <p class="setting-hint">The setting is saved and applied to the main screen immediately.</p>
+                  <h3>${t('numberOfColumns')} <span id="columnsCurrent">${storedColumns()}</span></h3>
+                  <div id="columnOptions" class="column-options" aria-label="${t('numberOfColumns2')}"></div>
+                  <p class="setting-hint">${t('columnsHelp')}</p>
                 </div>
               </section>
 
-              <section class="settings-page" data-settings-page="interfaces"hidden>
-                <h2>Interfaces</h2>
-                <p>Switch installed launcher interfaces or import new HTML/ZIP.</p>
+              <section class="settings-page" data-settings-page="interfaces" hidden>
+                <h2>${t('interfaces')}</h2>
+                <p>${t('interfacesHelp')}</p>
                 <div id="interfaceList" class="interface-list"></div>
                 <div class="setting-group">
-                  <button id="importInterface" class="metro-button" type="button">Add interface</button>
+                  <button id="importInterface" class="metro-button" type="button">${t('addInterface')}</button>
                 </div>
               </section>
 
@@ -1331,13 +1540,13 @@ ${Number(value).toLocaleString('en-US')} bytes`;
                 <button id="installTelegram" class="metro-button" type="button"></button>
               </section>
 
-              <section class="settings-page" data-settings-page="about"hidden>
-                <h2>About the application</h2>
-                <p>Information about the current runtime and working folder.</p>
+              <section class="settings-page" data-settings-page="about" hidden>
+                <h2>${t('aboutTheApplication')}</h2>
+                <p>${t('aboutHelp')}</p>
                 <div class="info-grid">
-                  <div class="label">Version</div><div>${escapeHtml(info.version ||'—')}</div>
-                  <div class="label">Platform</div><div>${escapeHtml(info.platform || '—')}</div>
-                  <div class="label">Applications</div><div>${escapeHtml(info.appsPath || '—')}</div>
+                  <div class="label">${t('version')}</div><div>${escapeHtml(info.version ||'—')}</div>
+                  <div class="label">${t('platform')}</div><div>${escapeHtml(info.platform || '—')}</div>
+                  <div class="label">${t('applicationsTitle')}</div><div>${escapeHtml(info.appsPath || '—')}</div>
                 </div>
               </section>
             </div>
@@ -1349,25 +1558,25 @@ ${Number(value).toLocaleString('en-US')} bytes`;
     async function renderInterfaces() {
       const root = document.querySelector('#interfaceList');
       if (!root) return;
-      root.innerHTML = '<div class="interface-item"><div><strong>Loading...</strong></div></div>';
+      root.innerHTML = `<div class="interface-item"><div><strong>${t('loading')}</strong></div></div>`;
 
       try {
         const interfaces = await launcher.listInterfaces();
         root.replaceChildren(...interfaces.map(item => {
           const row = document.createElement('div');
-          row.className = 'interface-item' + (item.active ? 'active' : '');
+          row.className = 'interface-item' + (item.active ? " active" : '');
 
           const copy = document.createElement('div');
           const title = document.createElement('strong');
           const status = document.createElement('small');
           title.textContent = item.name;
-          status.textContent = item.active ? 'Currently in use' : 'Available';
+          status.textContent = item.active ? t('currentlyInUse') : t('available');
           copy.append(title, status);
 
           const button = document.createElement('button');
           button.type = 'button';
-          button.className = 'metro-button' + (item.active ? 'secondary' : '');
-          button.textContent = item.active ? 'Active' : 'Select';
+          button.className = "metro-button " + (item.active ? 'secondary' : '');
+          button.textContent = item.active ? t('active') : t('select');
           button.disabled = !!item.active;
           button.onclick = () => call(async () => {
             await launcher.selectInterface(item.id);
@@ -1378,7 +1587,7 @@ ${Number(value).toLocaleString('en-US')} bytes`;
           return row;
         }));
       } catch (error) {
-        root.innerHTML = `<div class="interface-item"><div><strong>Failed to load</strong><small>${escapeHtml(error?.message || error?.code ||'')}</small></div></div>`;
+        root.innerHTML = `<div class="interface-item"><div><strong>${t('failedToLoad')}</strong><small>${escapeHtml(error?.message || error?.code ||'')}</small></div></div>`;
       }
     }
 
@@ -1401,7 +1610,7 @@ ${Number(value).toLocaleString('en-US')} bytes`;
         button.dataset.color = color;
         button.style.setProperty('--swatch', color);
         button.style.setProperty('--swatch-text', readableText(color));
-        button.setAttribute('aria-label', `Color ${color}`);
+        button.setAttribute('aria-label', `${t('colorPrefix')}${color}`);
         button.onclick = () => setAccent(color, true);
         swatches.append(button);
       });
@@ -1413,7 +1622,7 @@ ${Number(value).toLocaleString('en-US')} bytes`;
         button.className = 'column-option';
         button.dataset.columns = String(columns);
         button.textContent = String(columns);
-        button.setAttribute('aria-label', `${columns} ${declension(columns, ['column', 'column', 'columns'])}`);
+        button.setAttribute('aria-label', `${columns} ${declension(columns, [t('columnOne'), t('columnFew'), t('columnMany')])}`);
         button.onclick = () => setColumns(columns, true);
         columnOptions.append(button);
       }
@@ -1446,11 +1655,12 @@ ${Number(value).toLocaleString('en-US')} bytes`;
       });
 
       const telegram = settingsOverlay.querySelector('#installTelegram');
+      launcher.mountLanguageSettings(settingsOverlay.querySelector('[data-settings-page="personalization"]'));
       launcher.mountTelegramSettings?.(settingsOverlay.querySelector('#telegramOptions'));
-      telegram.textContent = hasTelegram ? 'Update Telegram' : 'Install Telegram';
+      telegram.textContent = hasTelegram ? t('updateTelegram') : t('installTelegram');
       telegram.onclick = () => call(async () => {
         const result = await launcher.installTelegram();
-        telegram.textContent = 'Update Telegram';
+        telegram.textContent = t('updateTelegram');
         await loadApps();
         return result;
       });
@@ -1467,9 +1677,9 @@ ${Number(value).toLocaleString('en-US')} bytes`;
     $('#more').onclick = event => {
       const rect = event.currentTarget.getBoundingClientRect();
       popupMenu(rect.right, rect.bottom, [
-        ['Update', () => launcher.refresh().then(loadApps)],
-        ['Add an application', () => launcher.importApp().then(loadApps)],
-        ['Settings', openSettings]
+        [t('update'), () => launcher.refresh().then(loadApps)],
+        [t('addAnApplication'), () => launcher.importApp().then(loadApps)],
+        [t('settings'), openSettings]
       ]);
     };
 

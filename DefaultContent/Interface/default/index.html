@@ -1,5 +1,78 @@
 <!-- Native runtime injects its launcher bridge at this head marker. --></head>
-<!doctype html><html lang="en" data-miniapps-telegram-settings><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mini Apps</title><style>:root{color-scheme:dark;font-family:system-ui;background:#12141c;color:#f6f7fb}*{box-sizing:border-box}body{margin:0}main{max-width:900px;margin:auto;padding:24px 16px}header{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;gap:16px}h1{font-size:28px;margin:0}p,small{color:#aeb6c8}button{border:0;border-radius:12px;background:#365bff;color:#fff;padding:11px 15px;font-size:16px;cursor:pointer}.icon{width:44px;height:44px;padding:0;font-size:24px}.apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}.app{position:relative;min-height:116px;background:#1d2130;border:1px solid #2b3144;border-radius:16px;padding:16px 52px 16px 16px;cursor:pointer}.app h2{margin:0 0 7px;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dots{position:absolute;top:8px;right:8px;width:40px;height:40px;padding:0;background:transparent}.menu{position:fixed;z-index:10;min-width:210px;padding:6px;background:#242936;border:1px solid #3a4254;border-radius:10px;box-shadow:0 12px 28px #0008}.menu button{display:block;width:100%;background:transparent;text-align:left;border-radius:6px}.menu button:hover{background:#365bff}.modal{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:16px;background:#0009}.panel{width:min(440px,100%);background:#242936;border:1px solid #3a4254;border-radius:16px;padding:20px}.settings-tabs,[data-interface-list]{display:flex;flex-wrap:wrap;gap:8px;margin-block:12px}.settings-tabs button[aria-pressed=false]{background:#373e51}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.toast{position:fixed;z-index:30;left:50%;bottom:18px;transform:translateX(-50%);padding:10px 14px;background:#2d3445;border-radius:10px;opacity:0;transition:.15s}.toast.on{opacity:1}@media(max-width:480px){main{padding:16px 12px}.apps{grid-template-columns:1fr}}</style><main><header><div><h1>Mini Apps</h1><p>Local HTML apps</p></div><button id="more" class="icon" aria-label="Menu">⋮</button></header><section id="apps" class="apps"></section><p id="empty" hidden>No mini-apps found.</p></main><div id="toast" class="toast" role="status"></div><script>(()=>{let menu,busy=0;const $=s=>document.querySelector(s),apps=$('#apps'),toast=$('#toast'),esc=s=>String(s??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x])),say=s=>{toast.textContent=s;toast.classList.add('on');setTimeout(()=>toast.classList.remove('on'),3000)},fail=e=>say(e?.message||'Operation failed'),close=()=>{menu?.remove();menu=null},call=async f=>{busy=1;try{let r=await f();if(r?.message)say(r.message);return r}catch(e){fail(e)}finally{busy=0}};function pop(x,y,items){close();menu=document.createElement('div');menu.className='menu';items.forEach(([n,f])=>{let b=document.createElement('button');b.textContent=n;b.onclick=()=>{close();call(f)};menu.append(b)});document.body.append(menu);let r=menu.getBoundingClientRect();menu.style.left=Math.max(8,Math.min(x-r.width,innerWidth-r.width-8))+'px';menu.style.top=Math.max(8,Math.min(y,innerHeight-r.height-8))+'px';setTimeout(()=>addEventListener('pointerdown',e=>{if(!menu?.contains(e.target))close()},{once:true}),0)}async function load(){let list=await launcher.list();apps.replaceChildren(...list.map(a=>{let el=document.createElement('article');el.className='app';el.tabIndex=0;el.innerHTML=`<h2>${esc(a.name)}</h2><small>${esc(a.version)}${a.description?' · '+esc(a.description):''}</small><button class="dots" aria-label="Actions">⋮</button>`;el.onclick=e=>{if(!e.target.closest('.dots')&&!busy)launcher.open(a.id).catch(fail)};el.oncontextmenu=e=>{e.preventDefault();card(a,e.clientX,e.clientY)};el.querySelector('.dots').onclick=e=>{e.stopPropagation();let r=e.currentTarget.getBoundingClientRect();card(a,r.right,r.bottom)};return el}));$('#empty').hidden=!!list.length}function card(a,x,y){pop(x,y,[['Open',()=>launcher.open(a.id)],['Open in new window',()=>launcher.openNewWindow(a.id)],['Delete',()=>launcher.deleteApp(a.id).then(load)],['Share app',()=>launcher.shareApp(a.id)],['Share data',()=>launcher.shareAppData(a.id)]])}let settingsPanel;
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mini Apps</title><style>:root{color-scheme:dark;font-family:system-ui;background:#12141c;color:#f6f7fb}*{box-sizing:border-box}body{margin:0}main{max-width:900px;margin:auto;padding:24px 16px}header{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;gap:16px}h1{font-size:28px;margin:0}p,small{color:#aeb6c8}button{border:0;border-radius:12px;background:#365bff;color:#fff;padding:11px 15px;font-size:16px;cursor:pointer}.icon{width:44px;height:44px;padding:0;font-size:24px}.apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}.app{position:relative;min-height:116px;background:#1d2130;border:1px solid #2b3144;border-radius:16px;padding:16px 52px 16px 16px;cursor:pointer}.app h2{margin:0 0 7px;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dots{position:absolute;top:8px;right:8px;width:40px;height:40px;padding:0;background:transparent}.menu{position:fixed;z-index:10;min-width:210px;padding:6px;background:#242936;border:1px solid #3a4254;border-radius:10px;box-shadow:0 12px 28px #0008}.menu button{display:block;width:100%;background:transparent;text-align:left;border-radius:6px}.menu button:hover{background:#365bff}.modal{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:16px;background:#0009}.panel{width:min(440px,100%);background:#242936;border:1px solid #3a4254;border-radius:16px;padding:20px}.settings-tabs,[data-interface-list]{display:flex;flex-wrap:wrap;gap:8px;margin-block:12px}.settings-tabs button[aria-pressed=false]{background:#373e51}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.toast{position:fixed;z-index:30;left:50%;bottom:18px;transform:translateX(-50%);padding:10px 14px;background:#2d3445;border-radius:10px;opacity:0;transition:.15s}.toast.on{opacity:1}@media(max-width:480px){main{padding:16px 12px}.apps{grid-template-columns:1fr}}</style><main><header><div><h1>Mini Apps</h1><p data-i18n="localHtmlApps">Local HTML apps</p></div><button id="more" class="icon" aria-label="Menu" data-i18n-aria-label="menu">⋮</button></header><section id="apps" class="apps"></section><p id="empty" hidden data-i18n="noMiniAppsFound">No mini-apps found.</p></main><div id="toast" class="toast" role="status"></div><script>
+(async () => {
+  const messages = {
+    en: {
+      about: "About",
+      actions: "Actions",
+      activeSuffix: " (active)",
+      addApp: "Add app",
+      addInterface: "Add interface",
+      apps: "Apps:",
+      close: "Close",
+      delete: "Delete",
+      installTelegram: "Install Telegram",
+      interfaces: "Interfaces",
+      localHtmlApps: "Local HTML apps",
+      menu: "Menu",
+      noMiniAppsFound: "No mini-apps found.",
+      open: "Open",
+      openInNewWindow: "Open in new window",
+      operationFailed: "Operation failed",
+      platform: "Platform:",
+      refresh: "Refresh",
+      settings: "Settings",
+      settingsSections: "Settings sections",
+      shareApp: "Share app",
+      shareData: "Share data",
+      updateTelegram: "Update Telegram",
+      version: "Version:"
+    },
+    ru: {
+      about: "О приложении",
+      actions: "Действия",
+      activeSuffix: " (активен)",
+      addApp: "Добавить приложение",
+      addInterface: "Добавить интерфейс",
+      apps: "Приложения:",
+      close: "Закрыть",
+      delete: "Удалить",
+      installTelegram: "Установить Telegram",
+      interfaces: "Интерфейсы",
+      localHtmlApps: "Локальные HTML-приложения",
+      menu: "Меню",
+      noMiniAppsFound: "Mini-apps не найдены.",
+      open: "Открыть",
+      openInNewWindow: "Открыть в новом окне",
+      operationFailed: "Операция не выполнена",
+      platform: "Платформа:",
+      refresh: "Обновить",
+      settings: "Настройки",
+      settingsSections: "Разделы настроек",
+      shareApp: "Поделиться приложением",
+      shareData: "Поделиться данными",
+      updateTelegram: "Обновить Telegram",
+      version: "Версия:"
+    }
+  };
+
+  let preferredLanguage;
+  try {
+    preferredLanguage = await globalThis.launcher?.getLanguage?.();
+  } catch {
+    // Use the browser language when the runtime does not provide a preference.
+  }
+  const language = /^ru(?:-|$)/i.test(preferredLanguage ?? navigator.language) ? 'ru' : 'en';
+  const t = key => messages[language][key];
+  document.documentElement.lang = language;
+  for (const node of document.querySelectorAll('[data-i18n]')) node.textContent = t(node.dataset.i18n);
+  for (const attribute of ['aria-label', 'title', 'placeholder']) {
+    const marker = 'data-i18n-' + attribute;
+    for (const node of document.querySelectorAll('[' + marker + ']')) {
+      node.setAttribute(attribute, t(node.getAttribute(marker)));
+    }
+  }
+let menu,busy=0;const $=s=>document.querySelector(s),apps=$('#apps'),toast=$('#toast'),esc=s=>String(s??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x])),say=s=>{toast.textContent=s;toast.classList.add('on');setTimeout(()=>toast.classList.remove('on'),3000)},fail=e=>say(e?.message||t('operationFailed')),close=()=>{menu?.remove();menu=null},call=async f=>{busy=1;try{let r=await f();if(r?.message)say(r.message);return r}catch(e){fail(e)}finally{busy=0}};function pop(x,y,items){close();menu=document.createElement('div');menu.className='menu';items.forEach(([n,f])=>{let b=document.createElement('button');b.textContent=n;b.onclick=()=>{close();call(f)};menu.append(b)});document.body.append(menu);let r=menu.getBoundingClientRect();menu.style.left=Math.max(8,Math.min(x-r.width,innerWidth-r.width-8))+'px';menu.style.top=Math.max(8,Math.min(y,innerHeight-r.height-8))+'px';setTimeout(()=>addEventListener('pointerdown',e=>{if(!menu?.contains(e.target))close()},{once:true}),0)}async function load(){let list=await launcher.list();apps.replaceChildren(...list.map(a=>{let el=document.createElement('article');el.className='app';el.tabIndex=0;el.innerHTML=`<h2>${esc(a.name)}</h2><small>${esc(a.version)}${a.description?' · '+esc(a.description):''}</small><button class="dots" aria-label="${t('actions')}">⋮</button>`;el.onclick=e=>{if(!e.target.closest('.dots')&&!busy)launcher.open(a.id).catch(fail)};el.oncontextmenu=e=>{e.preventDefault();card(a,e.clientX,e.clientY)};el.querySelector('.dots').onclick=e=>{e.stopPropagation();let r=e.currentTarget.getBoundingClientRect();card(a,r.right,r.bottom)};return el}));$('#empty').hidden=!!list.length}function card(a,x,y){pop(x,y,[[t('open'),()=>launcher.open(a.id)],[t('openInNewWindow'),()=>launcher.openNewWindow(a.id)],[t('delete'),()=>launcher.deleteApp(a.id).then(load)],[t('shareApp'),()=>launcher.shareApp(a.id)],[t('shareData'),()=>launcher.shareAppData(a.id)]])}let settingsPanel;
 function closeSettings() {
   if (!settingsPanel) return false;
   settingsPanel.remove();
@@ -12,16 +85,16 @@ async function openSettings() {
   const overlay = document.createElement('div');
   overlay.className = 'modal';
   overlay.innerHTML = `<section class="panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-    <h2 id="settings-title">Settings</h2>
-    <nav class="settings-tabs" aria-label="Settings sections">
-      <button type="button" data-tab="about" aria-pressed="true">About</button>
-      <button type="button" data-tab="interfaces" aria-pressed="false">Interfaces</button>
+    <h2 id="settings-title">${t('settings')}</h2>
+    <nav class="settings-tabs" aria-label="${t('settingsSections')}">
+      <button type="button" data-tab="about" aria-pressed="true">${t('about')}</button>
+      <button type="button" data-tab="interfaces" aria-pressed="false">${t('interfaces')}</button>
       <button type="button" data-tab="telegram" aria-pressed="false">Telegram</button>
     </nav>
-    <section data-page="about"><p>Version: ${esc(info.version)}<br>Platform: ${esc(info.platform)}<br>Apps: ${esc(info.appsPath)}</p></section>
-    <section data-page="interfaces" hidden><div data-interface-list></div><button type="button" data-add-interface>Add interface</button></section>
+    <section data-page="about"><p>${t('version')} ${esc(info.version)}<br>${t('platform')} ${esc(info.platform)}<br>${t('apps')} ${esc(info.appsPath)}</p></section>
+    <section data-page="interfaces" hidden><div data-interface-list></div><button type="button" data-add-interface>${t('addInterface')}</button></section>
     <section data-page="telegram" hidden><div data-telegram-options></div><button type="button" data-install-telegram></button></section>
-    <div class="actions"><button type="button" data-close-settings>Close</button></div>
+    <div class="actions"><button type="button" data-close-settings>${t('close')}</button></div>
   </section>`;
   settingsPanel = overlay;
   document.body.append(overlay);
@@ -31,7 +104,7 @@ async function openSettings() {
     interfaceList.replaceChildren(...list.map(item => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.textContent = item.active ? `${item.name} (active)` : item.name;
+      button.textContent = item.active ? `${item.name}${t('activeSuffix')}` : item.name;
       button.onclick = () => call(async () => { await launcher.selectInterface(item.id); location.reload(); });
       return button;
     }));
@@ -50,16 +123,17 @@ async function openSettings() {
     await renderInterfaces();
   });
   const install = overlay.querySelector('[data-install-telegram]');
-  install.textContent = hasTelegram ? 'Update Telegram' : 'Install Telegram';
+  install.textContent = hasTelegram ? t('updateTelegram') : t('installTelegram');
   install.onclick = () => call(async () => {
     const result = await launcher.installTelegram();
-    install.textContent = 'Update Telegram';
+    install.textContent = t('updateTelegram');
     await load();
     return result;
   });
+  launcher.mountLanguageSettings(overlay.querySelector('[data-page="about"]'));
   launcher.mountTelegramSettings?.(overlay.querySelector('[data-telegram-options]'));
   overlay.querySelector('[data-close-settings]').onclick = closeSettings;
   tabs[0].focus();
 }
 window.__launcherCloseSettings = closeSettings;
-$('#more').onclick=e=>{let r=e.currentTarget.getBoundingClientRect();pop(r.right,r.bottom,[['Refresh',()=>launcher.refresh().then(load)],['Add app',()=>launcher.importApp().then(load)],['Settings',openSettings]])};addEventListener('keydown',e=>{if(e.key==='Escape'&&!closeSettings())close()});window.__launcherClosePopup=()=>{let had=!!menu;close();return had};load().catch(fail)})()</script></html>
+$('#more').onclick=e=>{let r=e.currentTarget.getBoundingClientRect();pop(r.right,r.bottom,[[t('refresh'),()=>launcher.refresh().then(load)],[t('addApp'),()=>launcher.importApp().then(load)],[t('settings'),openSettings]])};addEventListener('keydown',e=>{if(e.key==='Escape'&&!closeSettings())close()});window.__launcherClosePopup=()=>{let had=!!menu;close();return had};load().catch(fail)})()</script></html>

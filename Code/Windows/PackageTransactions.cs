@@ -30,9 +30,8 @@ internal static partial class MiniStore
         RecoverPackageTransactions();
     }
 
-    private static bool HasEntries(string directory, MiniManifest manifest) =>
-        File.Exists(Path.Combine(directory, manifest.Entry)) &&
-        manifest.Locales.Values.All(locale => File.Exists(Path.Combine(directory, locale.Entry)));
+    private static bool HasEntry(string directory, MiniManifest manifest) =>
+        File.Exists(Path.Combine(directory, manifest.Entry));
 
     private static string RollbackPath(string id)
     {

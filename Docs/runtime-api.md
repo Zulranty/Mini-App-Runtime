@@ -55,11 +55,10 @@ Both `version` and `minRuntimeVersion` use SemVer (`major.minor.patch`, optional
 
 ## Application information
 
-`mini.app.getAppInfo()` returns app metadata, using the selected localized name and entry when available, plus ISO-8601 `installedAt` and `updatedAt` timestamps. `appSizeBytes` excludes persistent data; `dataSizeBytes` includes public, private, and secure runtime storage. The separate `publicDataSizeBytes`, `privateDataSizeBytes`, and `secureDataSizeBytes` fields provide a size breakdown.
+`mini.app.getAppInfo()` returns app metadata, using the translated name and description when available, plus ISO-8601 `installedAt` and `updatedAt` timestamps. `appSizeBytes` excludes persistent data; `dataSizeBytes` includes public, private, and secure runtime storage. The separate `publicDataSizeBytes`, `privateDataSizeBytes`, and `secureDataSizeBytes` fields provide a size breakdown.
 
-`await mini.locale.get()` returns `{ preferred, resolved }`. `preferred` is the
-launcher language at the start of the mini-app. `resolved` is the matched
-package language, or `null` for a legacy package without localized entries.
+`await mini.locale.get()` returns `{ preferred }`. `preferred` is the launcher
+language (`en` or `ru`) at the start of the mini-app.
 The same object is available as `locale` in `mini.app.getLaunchParams()`.
 Apps can use `preferred` to choose their own dictionary. A running mini-app
 keeps its launch language until it is reopened.

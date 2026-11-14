@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Worktime Tracker</title>
+  <title data-i18n="worktimeTracker">Worktime Tracker</title>
   <script type="application/miniapp+json">
-  {"id":"ru.htmlframework.worktime","name":"Worktime Tracker","version":"1.1.2","sdkVersion":1,"description":"Track work sessions, daily rates, and earnings with precise recalculation","author":"HTML Framework","permissions":["storage","files.pick","clipboard.write"]}
+  {"id":"ru.htmlframework.worktime","name":"Worktime Tracker","version":"1.1.4","sdkVersion":1,"description":"Track work sessions, daily rates, and earnings with precise recalculation","author":"HTML Framework","permissions":["storage","files.pick","clipboard.write"],"translations":{"ru":{"name":"Трекер рабочего времени","description":"Учёт рабочих сессий, ставок по дням и заработка с точным пересчётом"}}}
   </script>
   <style>
     :root{color-scheme:dark;--bg:#0f1115;--panel:#161a22;--line:#263042;--text:#e6e6ea;--muted:#9aa4b2;--blue:#6ee7ff;--green:#8cff9b;--red:#ff8b8b}
@@ -49,35 +49,142 @@
 </head>
 <body><main class="app">
   <section class="card">
-    <h1>Worktime Tracker</h1>
+    <h1 data-i18n="worktimeTracker">Worktime Tracker</h1>
     <div id="timer" class="timer">00:00:00</div>
     <div class="row">
-      <button id="toggle" class="start">▶️ Start</button>
-      <button id="endDay">✅ End day</button>
-      <button id="clear" class="danger">🗑 Clear</button>
+      <button id="toggle" class="start" data-i18n="start">▶️ Start</button>
+      <button id="endDay" data-i18n="endDay">✅ End day</button>
+      <button id="clear" class="danger" data-i18n="clear">🗑 Clear</button>
     </div>
     <div class="row">
-      <label>Period: <input id="from" type="date"></label><span>—</span><label><input id="to" type="date"></label>
-      <label class="grow">Time zone: <select id="tz"></select></label>
-      <label class="rateLabel">Hourly rate: <input id="hourlyRate" class="rateInput" type="number" min="0" step="0.01" inputmode="decimal" value="0.00"></label>
+      <label><span data-i18n="period">Period:</span> <input id="from" type="date"></label><span>—</span><label><input id="to" type="date"></label>
+      <label class="grow"><span data-i18n="timeZone">Time zone:</span> <select id="tz"></select></label>
+      <label class="rateLabel"><span data-i18n="hourlyRate">Hourly rate:</span> <input id="hourlyRate" class="rateInput" type="number" min="0" step="0.01" inputmode="decimal" value="0.00"></label>
     </div>
     <div class="kpi">
-      <div><span>Period total</span><div class="kpiValues"><b id="total">00:00:00</b><span class="moneyValue"><small>Earnings</small><b id="totalMoney">0.00</b></span></div></div>
-      <div><span>Today</span><div class="kpiValues"><b id="today">00:00:00</b><span class="moneyValue"><small>Earnings</small><b id="todayMoney">0.00</b></span></div></div>
-      <div><span>Active session</span><div class="kpiValues"><b id="active">—</b><span class="moneyValue"><small>Earnings</small><b id="activeMoney">0.00</b></span></div></div>
+      <div><span data-i18n="periodTotal">Period total</span><div class="kpiValues"><b id="total">00:00:00</b><span class="moneyValue"><small data-i18n="earnings">Earnings</small><b id="totalMoney">0.00</b></span></div></div>
+      <div><span data-i18n="today">Today</span><div class="kpiValues"><b id="today">00:00:00</b><span class="moneyValue"><small data-i18n="earnings">Earnings</small><b id="todayMoney">0.00</b></span></div></div>
+      <div><span data-i18n="activeSession">Active session</span><div class="kpiValues"><b id="active">—</b><span class="moneyValue"><small data-i18n="earnings">Earnings</small><b id="activeMoney">0.00</b></span></div></div>
     </div>
   </section>
-  <section class="card"><h2>Daily history</h2><div id="history"></div></section>
+  <section class="card"><h2 data-i18n="dailyHistory">Daily history</h2><div id="history"></div></section>
   <section class="card">
-    <h2>Data</h2>
-    <p class="hint">Import supports the old array of sessions and the new format with rates by day. The export saves sessions, time zone, current rate, and all days' rates.</p>
-    <div class="row"><button id="export">⬇️ Export JSON</button><button id="import">⬆️ Import JSON</button><button id="copy" style="display:none">Copy JSON</button></div>
+    <h2 data-i18n="data">Data</h2>
+    <p class="hint" data-i18n="importExportHelp">Import supports the old array of sessions and the new format with rates by day. The export saves sessions, time zone, current rate, and all days' rates.</p>
+    <div class="row"><button id="export" data-i18n="exportJson">⬇️ Export JSON</button><button id="import" data-i18n="importJson">⬆️ Import JSON</button><button id="copy" style="display:none" data-i18n="copyJson">Copy JSON</button></div>
     <textarea id="exportBox" class="exportBox" readonly></textarea>
   </section>
 </main>
 <input id="file" type="file" accept="application/json" hidden>
 <script>
-(()=>{'use strict';
+(async () => {
+'use strict';
+
+const messages = {
+  en: {
+    activeSession: "Active session",
+    auto: "Auto",
+    clear: "🗑 Clear",
+    confirmClearData: "Delete all local data, including daily rates?",
+    copyJson: "Copy JSON",
+    dailyHistory: "Daily history",
+    data: "Data",
+    deleteSessionFailed: "Unable to delete the session. Please try again.",
+    duration: "Duration",
+    earnings: "Earnings",
+    earnings2: "Earnings:",
+    end: "End",
+    endDay: "✅ End day",
+    endOfDay: "End of day",
+    invalidRate: "Enter an amount of at least 0.",
+    exportJson: "⬇️ Export JSON",
+    fileSelectionError: "File selection error: ",
+    hourlyRate: "Hourly rate:",
+    importError: "Import error: ",
+    importExportHelp: "Import supports the old array of sessions and the new format with rates by day. The export saves sessions, time zone, current rate, and all days' rates.",
+    importJson: "⬆️ Import JSON",
+    imported: "Imported: ",
+    incorrectStartOrEnd: "incorrect start or end",
+    invalidImportFormat: "expected session array or Worktime Tracker export",
+    invalidSessionTime: "Invalid session time.",
+    noDataForTheSelectedPeriod: "No data for the selected period.",
+    note: "Note",
+    note2: "Note...",
+    pause: "⏸ Pause",
+    perHour: "/h",
+    period: "Period:",
+    periodTotal: "Period total",
+    rate: "Rate:",
+    sessions: "sessions)",
+    importedSessions: " sessions",
+    start: "▶️ Start",
+    start2: "Start",
+    timeTracker: "Time Tracker",
+    timeZone: "Time zone:",
+    today: "Today",
+    worktimeTracker: "Worktime Tracker"
+  },
+  ru: {
+    activeSession: "Активная сессия",
+    auto: "Авто",
+    clear: "🗑 Очистить",
+    confirmClearData: "Удалить все локальные данные, включая ставки по дням?",
+    copyJson: "Скопировать JSON",
+    dailyHistory: "История по дням",
+    data: "Данные",
+    deleteSessionFailed: "Не удалось удалить сессию. Попробуйте ещё раз.",
+    duration: "Длительность",
+    earnings: "Деньги",
+    earnings2: "Деньги:",
+    end: "Конец",
+    endDay: "✅ Завершить день",
+    endOfDay: "Завершение дня",
+    invalidRate: "Введите сумму не меньше 0.",
+    exportJson: "⬇️ Экспорт JSON",
+    fileSelectionError: "Ошибка выбора файла: ",
+    hourlyRate: "Денег в час:",
+    importError: "Ошибка импорта: ",
+    importExportHelp: "Импорт поддерживает старый массив сессий и новый формат со ставками по дням. Экспорт сохраняет сессии, часовой пояс, текущую ставку и ставки всех дней.",
+    importJson: "⬆️ Импорт JSON",
+    imported: "Импортировано: ",
+    incorrectStartOrEnd: "некорректные start или end",
+    invalidImportFormat: "ожидался массив сессий или экспорт Worktime Tracker",
+    invalidSessionTime: "Некорректное время сессии.",
+    noDataForTheSelectedPeriod: "Нет данных за выбранный период.",
+    note: "Заметка",
+    note2: "Заметка...",
+    pause: "⏸ Пауза",
+    perHour: "/ч",
+    period: "Период:",
+    periodTotal: "Итого в периоде",
+    rate: "Ставка:",
+    sessions: "сесс.)",
+    importedSessions: " сессий",
+    start: "▶️ Старт",
+    start2: "Начало",
+    timeTracker: "Трекер времени",
+    timeZone: "Часовой пояс:",
+    today: "Сегодня",
+    worktimeTracker: "Трекер рабочего времени"
+  }
+};
+
+let preferredLanguage;
+try {
+  preferredLanguage = (await globalThis.mini?.locale?.get?.())?.preferred;
+} catch {
+  // Use the browser language when the runtime does not provide a preference.
+}
+const language = /^ru(?:-|$)/i.test(preferredLanguage ?? navigator.language) ? 'ru' : 'en';
+const t = key => messages[language][key];
+document.documentElement.lang = language;
+for (const node of document.querySelectorAll('[data-i18n]')) node.textContent = t(node.dataset.i18n);
+for (const attribute of ['aria-label', 'title', 'placeholder']) {
+  const marker = 'data-i18n-' + attribute;
+  for (const node of document.querySelectorAll('[' + marker + ']')) {
+    node.setAttribute(attribute, t(node.getAttribute(marker)));
+  }
+}
 const KEY='wt.sessions.v1',TZ='wt.timezone.v1',RATE='wt.hourlyRate.v1',DAY_RATES='wt.dailyRates.v1',$=s=>document.querySelector(s);
 let sessions=[],tz='auto',hourlyRate=0,dailyRates={},hasRateHistory=false,ticker,lastWindowTitle,lastTickSecond=-1,timerUnsubscribe,saveQueue=Promise.resolve(),rateSaveTimer,currentRateDay='';
 
@@ -238,7 +345,7 @@ function getPeriod(){
 
 function windowTitle(todayMs){
   let minutes=Math.floor(todayMs/60000);
-  return todayMs?`${pad(Math.floor(minutes/60))}:${pad(minutes%60)}`:'Time Tracker';
+  return todayMs?`${pad(Math.floor(minutes/60))}:${pad(minutes%60)}`:t('timeTracker');
 }
 
 function updateWindowTitle(todayMs){
@@ -309,10 +416,10 @@ function render(){
   $('#todayMoney').textContent=moneyCents(todayResult.totalMoneyCents);
   $('#activeMoney').textContent=moneyCents(a?rangeMoneyCents(a.start,current,Number.isFinite(a.tzOffset)?a.tzOffset:offset()):0);
   updateWindowTitle(todayResult.total);
-  $('#toggle').textContent=a?'⏸ Pause':'▶️ Start';
+  $('#toggle').textContent=a?t('pause'):t('start');
   $('#toggle').className=a?'pause':'start';
   let keys=Object.keys(r.days).sort().reverse();
-  $('#history').innerHTML=keys.length?keys.map(d=>`<details open><summary>${d} — <span class="pill" data-day-total="${d}">${hms(r.days[d].ms)}</span> <span class="pill dayRatePill">Rate: <input class="dayRateInput" data-day-rate="${d}" type="number" min="0" step="0.01" value="${money(r.days[d].rate)}"> /h</span> <span class="pill moneyPill">Earnings: <span data-day-money="${d}">${moneyCents(r.days[d].moneyCents)}</span></span> <span class="muted">(${r.days[d].rows.length} sessions)</span></summary><table><thead><tr><th>Start</th><th>End</th><th>Duration</th><th>Note</th><th></th></tr></thead><tbody>${r.days[d].rows.map(x=>row(x,d)).join('')}</tbody></table></details>`).join(''):'<p class="muted">No data for the selected period.</p>';
+  $('#history').innerHTML=keys.length?keys.map(d=>`<details open><summary>${d} — <span class="pill" data-day-total="${d}">${hms(r.days[d].ms)}</span> <span class="pill dayRatePill">${t('rate')} <input class="dayRateInput" data-day-rate="${d}" type="number" min="0" step="0.01" value="${money(r.days[d].rate)}"> ${t('perHour')}</span> <span class="pill moneyPill">${t('earnings2')} <span data-day-money="${d}">${moneyCents(r.days[d].moneyCents)}</span></span> <span class="muted">(${r.days[d].rows.length} ${t('sessions')}</span></summary><table><thead><tr><th>${t('start2')}</th><th>${t('end')}</th><th>${t('duration')}</th><th>${t('note')}</th><th></th></tr></thead><tbody>${r.days[d].rows.map(x=>row(x,d)).join('')}</tbody></table></details>`).join(''):`<p class="muted">${t('noDataForTheSelectedPeriod')}</p>`;
   bind();
 }
 
@@ -320,7 +427,7 @@ const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 
 function row(x,d){
   let s=x.s,o=s.tzOffset??offset(),canStart=date(s.start,o)===d,canEnd=s.end!=null&&date(s.end,o)===d;
-  return `<tr data-id="${esc(s.id)}" data-day="${d}"><td>${canStart?`<input class="timeInput startTime" type="time" step="1" value="${clock(s.start,o)}">`:clock(x.a,o)}</td><td>${s.end==null?'—':canEnd?`<input class="timeInput endTime" type="time" step="1" value="${clock(s.end,o)}">`:clock(x.b,o)}</td><td>${hms(x.n)}</td><td><input class="note" value="${esc(s.note)}" placeholder="Note..."></td><td><button class="delete">×</button></td></tr>`;
+  return `<tr data-id="${esc(s.id)}" data-day="${d}"><td>${canStart?`<input class="timeInput startTime" type="time" step="1" value="${clock(s.start,o)}">`:clock(x.a,o)}</td><td>${s.end==null?'—':canEnd?`<input class="timeInput endTime" type="time" step="1" value="${clock(s.end,o)}">`:clock(x.b,o)}</td><td>${hms(x.n)}</td><td><input class="note" value="${esc(s.note)}" placeholder="${t('note2')}"></td><td><button class="delete">×</button></td></tr>`;
 }
 
 function toMs(d,t,o){
@@ -336,7 +443,7 @@ function bind(){
       e.stopPropagation();
       let raw=input.value.trim().replace(',','.'),value=Number(raw),day=input.dataset.dayRate;
       if(raw===''||!validRate(value)){
-        alert('Enter an amount of at least 0.');
+        alert(t('invalidRate'));
         input.value=money(getDayRate(day));
         return;
       }
@@ -361,14 +468,14 @@ function bind(){
       let removed=sessions[i];
       del.disabled=true;
       sessions.splice(i,1);
-      try{await save();render()}catch(e){sessions.splice(i,0,removed);render();alert('Unable to delete the session. Please try again.')}
+      try{await save();render()}catch(e){sessions.splice(i,0,removed);render();alert(t('deleteSessionFailed'))}
     };
     for(let [cl,f] of [['startTime','start'],['endTime','end']]){
       let el=tr.querySelector('.'+cl);
       if(el)el.onchange=()=>{
         let n=toMs(tr.dataset.day,el.value,s.tzOffset??offset());
         if(!Number.isFinite(n)||(f==='start'&&s.end!=null&&n>s.end)||(f==='end'&&n<s.start)){
-          alert('Invalid session time.');render();return;
+          alert(t('invalidSessionTime'));render();return;
         }
         s[f]=n;save();render();
       };
@@ -416,8 +523,8 @@ async function importText(text){
       if(data.dailyRates&&typeof data.dailyRates==='object'&&!Array.isArray(data.dailyRates))importedRates=data.dailyRates;
       if(validRate(data.hourlyRateDefault))importedRate=Number(data.hourlyRateDefault);
       if(data.timezone==='auto'||validRate(data.timezone))importedTz=String(data.timezone);
-    }else throw Error('expected session array or Worktime Tracker export');
-    for(let s of items)if(typeof s?.start!=='number'||!(s.end==null||typeof s.end==='number'))throw Error('incorrect start or end');
+    }else throw Error(t('invalidImportFormat'));
+    for(let s of items)if(typeof s?.start!=='number'||!(s.end==null||typeof s.end==='number'))throw Error(t('incorrectStartOrEnd'));
     sessions=items.map(s=>({id:s.id||uid(),start:s.start,end:s.end===undefined?null:s.end,note:s.note??'',tzOffset:Number.isFinite(s.tzOffset)?s.tzOffset:offset(),hourlyRate:validRate(s.hourlyRate)?Number(s.hourlyRate):undefined}));
     hourlyRate=normalizeRate(importedRate);
     dailyRates=Object.fromEntries(Object.entries(importedRates).filter(([d,v])=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&validRate(v)).map(([d,v])=>[d,Number(v)]));
@@ -428,8 +535,8 @@ async function importText(text){
     ensureDayRate(currentRateDay);
     $('#tz').value=tz;
     $('#hourlyRate').value=money(getDayRate(currentRateDay));
-    await save();render();alert(`Imported: ${sessions.length} sessions`);
-  }catch(e){alert(`Import error: ${e.message}`)}
+    await save();render();alert(`${t('imported')}${sessions.length}${t('importedSessions')}`);
+  }catch(e){alert(`${t('importError')}${e.message}`)}
 }
 
 async function choose(){
@@ -439,7 +546,7 @@ async function choose(){
       let text=await mini.files.readText(f.id);
       await mini.files.release(f.id);
       return importText(text);
-    }catch(e){if(e?.code!=='file_not_found')alert(`File selection error: ${e.message||e}`)}
+    }catch(e){if(e?.code!=='file_not_found')alert(`${t('fileSelectionError')}${e.message||e}`)}
   }
   $('#file').click();
 }
@@ -459,7 +566,7 @@ function applyRateInput(saveImmediately=false){
 
 async function init(){
   for(let i=-12;i<=14;i++)$('#tz').add(new Option(`UTC${i>=0?'+':''}${i}`,i));
-  $('#tz').add(new Option('Auto','auto'));
+  $('#tz').add(new Option(t('auto'),'auto'));
   await read();
   $('#tz').value=tz;
   let w=week();$('#from').value=w[0];$('#to').value=w[1];
@@ -480,12 +587,12 @@ async function init(){
   $('#endDay').onclick=async()=>{
     let a=active();if(a)a.end=now();
     let ended=now(),o=offset(),d=date(ended,o),rate=ensureDayRate(d);
-    sessions.push({id:uid(),start:ended,end:ended,note:'End of day',tzOffset:o,hourlyRate:rate});
+    sessions.push({id:uid(),start:ended,end:ended,note:t('endOfDay'),tzOffset:o,hourlyRate:rate});
     await save();render();
   };
 
   $('#clear').onclick=async()=>{
-    if(confirm('Delete all local data, including daily rates?')){
+    if(confirm(t('confirmClearData'))){
       sessions=[];dailyRates={};hourlyRate=0;hasRateHistory=false;currentRateDay=date(now());ensureDayRate(currentRateDay);$('#hourlyRate').value='0.00';
       await save();render();
     }
@@ -503,7 +610,7 @@ async function init(){
   $('#hourlyRate').oninput=()=>applyRateInput(false);
   $('#hourlyRate').onchange=()=>{
     if(!applyRateInput(true)){
-      alert('Enter an amount of at least 0.');
+      alert(t('invalidRate'));
       $('#hourlyRate').value=money(getDayRate(currentRateDay));
     }else $('#hourlyRate').value=money(getDayRate(currentRateDay));
   };

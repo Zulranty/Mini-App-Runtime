@@ -22,8 +22,8 @@
       // the native file import instead of silently closing the file picker.
       if (response.result && typeof response.result === 'object' && Object.prototype.hasOwnProperty.call(response.result, 'installed')) {
         response.result.message = response.result.installed
-          ? `Приложение установлено: ${response.result.appPath || response.result.appId}`
-          : 'Установлена более новая версия приложения';
+          ? `${label('appInstalled')}${response.result.appPath || response.result.appId}`
+          : label('newerAppInstalled');
       }
       item.resolve(response.result);
     }
@@ -57,14 +57,42 @@
     mountLanguageSettings
   };
 
-  const label = (english, russian) => /^ru(?:-|$)/i.test(document.documentElement.lang) ? russian : english;
+  const messages = {
+    en: {
+      appInstalled: "App installed: ",
+      appliesWhenYouNextOpenUnofficialTelegram: "Applies when you next open Unofficial Telegram.",
+      copyLog: "Copy log",
+      language: "Language",
+      logCopied: "Log copied.",
+      newerAppInstalled: "A newer version of the app is already installed",
+      noTelegramLoginEventsRecorded: "No Telegram login events recorded.",
+      refreshLog: "Refresh log",
+      saveTelegramLoginLogToFile: "Save Telegram login log to file",
+      telegramLoginLog: "Telegram login log",
+      telegramTestServer: "Telegram test server",
+    },
+    ru: {
+      appInstalled: "Приложение установлено: ",
+      appliesWhenYouNextOpenUnofficialTelegram: "Применится при следующем открытии Unofficial Telegram.",
+      copyLog: "Скопировать журнал",
+      language: "Язык",
+      logCopied: "Журнал скопирован.",
+      newerAppInstalled: "Установлена более новая версия приложения",
+      noTelegramLoginEventsRecorded: "Записей о входе в Telegram пока нет.",
+      refreshLog: "Обновить журнал",
+      saveTelegramLoginLogToFile: "Записывать журнал входа Telegram в файл",
+      telegramLoginLog: "Журнал входа Telegram",
+      telegramTestServer: "Тестовый сервер Telegram",
+    },
+  };
+  const label = key => messages[/^ru(?:-|$)/i.test(document.documentElement.lang) ? 'ru' : 'en'][key];
 
   function mountLanguageSettings(container) {
     if (container.querySelector('[data-miniapps-language]')) return;
     const panel = document.createElement('div');
     panel.dataset.miniappsLanguage = '';
     const caption = document.createElement('label');
-    caption.textContent = label('Language', 'Язык');
+    caption.textContent = label('language');
     const select = document.createElement('select');
     select.style.cssText = 'margin-inline-start: .75em; padding: .45em; font: inherit';
     select.disabled = true;
@@ -111,15 +139,15 @@
         button { margin-inline-end: .4em; min-height: 36px; }
         [role="status"]:empty { display: none; }
       </style>
-      <label><input id="testServer" type="checkbox" disabled> ${label('Telegram test server', 'Тестовый сервер Telegram')}</label>
-      <p>${label('Applies when you next open Unofficial Telegram.', 'Применится при следующем открытии Unofficial Telegram.')}</p>
-      <label><input id="writeLoginLog" type="checkbox" disabled> ${label('Save Telegram login log to file', 'Записывать журнал входа Telegram в файл')}</label>
+      <label><input id="testServer" type="checkbox" disabled> ${label('telegramTestServer')}</label>
+      <p>${label('appliesWhenYouNextOpenUnofficialTelegram')}</p>
+      <label><input id="writeLoginLog" type="checkbox" disabled> ${label('saveTelegramLoginLogToFile')}</label>
       <p id="settingsStatus" role="status"></p>
       <details>
-        <summary>${label('Telegram login log', 'Журнал входа Telegram')}</summary>
-        <textarea aria-label="${label('Telegram login log', 'Журнал входа Telegram')}" rows="6" readonly spellcheck="false"></textarea>
-        <button id="refreshLog" type="button">${label('Refresh log', 'Обновить журнал')}</button>
-        <button id="copyLog" type="button" disabled>${label('Copy log', 'Скопировать журнал')}</button>
+        <summary>${label('telegramLoginLog')}</summary>
+        <textarea aria-label="${label('telegramLoginLog')}" rows="6" readonly spellcheck="false"></textarea>
+        <button id="refreshLog" type="button">${label('refreshLog')}</button>
+        <button id="copyLog" type="button" disabled>${label('copyLog')}</button>
         <p id="logPath"></p>
         <p id="logStatus" role="status"></p>
       </details>`;
@@ -164,7 +192,7 @@
         const result = await call('telegram.log.read');
         log.value = result.text;
         root.getElementById('logPath').textContent = result.path;
-        if (!log.value) logStatus.textContent = label('No Telegram login events recorded.', 'Записей о входе в Telegram пока нет.');
+        if (!log.value) logStatus.textContent = label('noTelegramLoginEventsRecorded');
       } catch (error) {
         log.value = '';
         logStatus.textContent = error.message;
@@ -178,7 +206,7 @@
       refresh.disabled = copy.disabled = true;
       try {
         await call('telegram.log.copy');
-        logStatus.textContent = label('Log copied.', 'Журнал скопирован.');
+        logStatus.textContent = label('logCopied');
       } catch (error) {
         logStatus.textContent = error.message;
       } finally {
@@ -187,70 +215,4 @@
     };
   }
 
-  // Older Metro themes build their settings dialog when the menu item is opened.
-  // Add the missing page to that dialog without editing the installed theme.
-  function extendMetroSettings(overlay) {
-    const nav = overlay.querySelector('.settings-window .settings-nav');
-    const content = overlay.querySelector('.settings-window .settings-content');
-    const interfaces = nav?.querySelector('button[data-page="interfaces"]');
-    if (!interfaces || !nav.querySelector('button[data-page="personalization"]') ||
-        !content?.querySelector('[data-settings-page="interfaces"]') ||
-        !content.querySelector('[data-settings-page="about"]') ||
-        nav.querySelector('[data-page="telegram"]') || content.querySelector('[data-settings-page="telegram"]')) return;
-
-    const tab = document.createElement('button');
-    tab.type = 'button';
-    tab.dataset.page = 'telegram';
-    tab.textContent = 'Telegram';
-    const page = document.createElement('section');
-    page.className = 'settings-page';
-    page.dataset.settingsPage = 'telegram';
-    page.hidden = true;
-    page.innerHTML = '<h2>Telegram</h2><div></div><button class="metro-button" type="button" disabled></button><p role="status"></p>';
-    interfaces.before(tab);
-    content.append(page);
-
-    const controls = page.querySelector('div');
-    const install = page.querySelector('button');
-    const feedback = page.querySelector('[role="status"]');
-    const installLabel = label('Install Telegram', 'Установить Telegram');
-    const updateLabel = label('Update Telegram', 'Обновить Telegram');
-    install.textContent = installLabel;
-    tab.onclick = async () => {
-      for (const button of nav.querySelectorAll('button[data-page]')) button.classList.toggle('active', button === tab);
-      for (const section of content.querySelectorAll('[data-settings-page]')) section.hidden = section !== page;
-      if (controls.hasChildNodes()) return;
-      mountTelegramSettings(controls);
-      try {
-        install.textContent = await window.launcher.hasTelegramClient() ? updateLabel : installLabel;
-        install.disabled = false;
-      } catch (error) {
-        feedback.textContent = error.message;
-      }
-    };
-    install.onclick = async () => {
-      install.disabled = true;
-      feedback.textContent = '';
-      try {
-        const result = await window.launcher.installTelegram();
-        install.textContent = updateLabel;
-        feedback.textContent = result?.message ?? '';
-      } catch (error) {
-        feedback.textContent = error.message;
-      } finally {
-        install.disabled = false;
-      }
-    };
-  }
-
-  if (window === window.top) new MutationObserver(records => {
-    for (const record of records) {
-      for (const node of record.addedNodes) {
-        if (!(node instanceof Element)) continue;
-        if (node.matches('.settings-overlay')) extendMetroSettings(node);
-        const preferences = node.querySelector('.settings-window [data-settings-page="personalization"], [role="dialog"][aria-labelledby="settings-title"] [data-page="about"]');
-        if (preferences) mountLanguageSettings(preferences);
-      }
-    }
-  }).observe(document, { childList: true, subtree: true });
 })();

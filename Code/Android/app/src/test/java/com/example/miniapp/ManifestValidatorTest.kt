@@ -3,6 +3,7 @@ import com.example.miniapp.installer.*
 import com.example.miniapp.model.*
 import org.junit.Assert.*
 import org.junit.Test
+import org.json.JSONObject
 import java.io.File
 import kotlin.io.path.createTempDirectory
 class ManifestValidatorTest {
@@ -21,4 +22,24 @@ class ManifestValidatorTest {
  @Test fun networkPolicyRequiresPermissionAndValidOrigins(){val r=createTempDirectory().toFile();File(r,"index.html").writeText("");val policy=NetworkConfig(setOf("https://api.example.com","https://*.example.com"));val app=MiniAppManifest("a","a","1.0.0",1,"index.html",null,null,null,setOf("network"),network=policy);ManifestValidator.validate(app,r);assertThrows(Exception::class.java){ManifestValidator.validate(app.copy(permissions=emptySet()),r)};assertThrows(Exception::class.java){ManifestValidator.validate(app.copy(network=NetworkConfig(setOf("https://example.com/path"))),r)};assertThrows(Exception::class.java){ManifestValidator.validate(app.copy(network=NetworkConfig(setOf("https://*"))),r)}}
  @Test fun fileSaveAndSharePermissionsAreAccepted(){val r=createTempDirectory().toFile();File(r,"index.html").writeText("");ManifestValidator.validate(MiniAppManifest("a","a","1.0.0",1,"index.html",null,null,null,setOf("files.save","share")),r)}
  @Test fun htmlManifestJsonCanBeExtracted(){val html="""<script type="application/miniapp+json">{"id":"com.demo.html","name":"HTML","version":"1.0.0","sdkVersion":1,"permissions":["storage"]}</script>""";assertTrue(HtmlManifestReader.extractJson(html).contains("com.demo.html"))}
+
+ @Test fun translationsUseOneEntryAndFallBackPerField() {
+  val json = """{"id":"com.demo","name":"Notes","description":"Notes description","entry":"index.html",
+   "version":"1.0.0","sdkVersion":2,"translations":{"ru":{"name":"Заметки"}}}"""
+  val manifest = MiniAppManifest.parse(JSONObject(json))
+  val russian = manifest.localize("ru")
+  assertEquals("Заметки", russian.name)
+  assertEquals("Notes description", russian.description)
+  assertEquals("index.html", russian.entry)
+  assertEquals(manifest, manifest.localize("en"))
+  assertEquals(manifest, HtmlManifestReader.read("<script type='application/miniapp+json'>$json</script>"))
+ }
+
+ @Test fun translationsRejectEntriesAndInvalidLabels() {
+  val invalid = listOf("""{"ru":{"entry":"ru/index.html"}}""", """{"ru":{"name":" "}}""",
+   """{"ru":{"description":false}}""", """{"ru":{"name":null}}""", """{"de":{"name":"Notizen"}}""")
+  for (translations in invalid) {
+   assertThrows(InstallException::class.java) { MiniAppManifest.parse(JSONObject("""{"translations":$translations}""")) }
+  }
+ }
 }

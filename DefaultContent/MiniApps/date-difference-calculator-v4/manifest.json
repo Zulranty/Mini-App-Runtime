@@ -1,19 +1,14 @@
 {
   "id": "com.htmlframework.datecalculator",
   "name": "Date Calculator",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "sdkVersion": 1,
   "description": "Calculate years, months, weeks, and days between dates",
   "author": "Denis",
   "permissions": [],
   "entry": "index.html",
-  "defaultLanguage": "en",
-  "locales": {
-    "en": {
-      "entry": "index.html"
-    },
+  "translations": {
     "ru": {
-      "entry": "index.ru.html",
       "name": "Калькулятор дат",
       "description": "Расчёт лет, месяцев, недель и дней между датами"
     }

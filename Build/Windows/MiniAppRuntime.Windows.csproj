@@ -31,8 +31,6 @@
     <Compile Include="..\..\Code\Windows\**\*.cs" />
     <Content Include="..\..\Code\Framework\shared\web\runtime.js" Link="runtime.js" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
     <Content Include="..\..\Code\Framework\shared\launcher-runtime.js" Link="launcher-runtime.js" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="..\..\DefaultContent\Interface\**\index.html" Link="LauncherLocales\en\%(RecursiveDir)%(Filename)%(Extension)" CopyToPublishDirectory="Always" />
-    <Content Include="..\..\Ru\DefaultContent\Interface\**\index.html" Link="LauncherLocales\ru\%(RecursiveDir)%(Filename)%(Extension)" CopyToPublishDirectory="Always" />
     <Content Include="..\Telegram\api-credentials.local.json" Condition="Exists('..\Telegram\api-credentials.local.json')" Link="TelegramPackage\api-credentials.local.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\DefaultContent\MiniApps\Modules\telegram\*" Link="TelegramPackage\module\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\DefaultContent\MiniApps\telegram-client\*" Link="TelegramPackage\client\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

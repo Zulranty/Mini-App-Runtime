@@ -27,15 +27,6 @@ val prepareTelegramPackage by tasks.registering(Sync::class) {
     from(source.resolve("telegram-client")) { into("telegram-package/client") }
     from(rootProject.file("../Telegram/api-credentials.local.json")) { into("telegram-package") }
 }
-val localizedLauncherAssets = layout.buildDirectory.dir("generated/localized-launcher-assets")
-val prepareLocalizedLauncher by tasks.registering(Sync::class) {
-    into(localizedLauncherAssets)
-    from(rootProject.file("../../Ru/DefaultContent/Interface")) {
-        include("default/index.html", "Metro-Interface/index.html")
-        into("launcher-ru")
-    }
-}
-
 // Peer transfer needs a debug runtime.
 val bundledApps = listOf("date-difference-calculator-v4", "esp-light", "mini-paint", "shopping-list",
     "telegram-client", "telegram-cloud", "worktime-tracker")
@@ -68,7 +59,6 @@ android { namespace = "com.example.miniapp"; compileSdk = 36
             assets.srcDirs("../../../Code/Framework/shared", "../../../Code/Android/app/src/main/assets",
                 "../../../DefaultContent/Interface")
             assets.srcDir(telegramPackageAssets)
-            assets.srcDir(localizedLauncherAssets)
             assets.srcDir(bundledAppAssets)
         }
         getByName("test").java.srcDirs("../../../Code/Android/app/src/test/java")
@@ -93,7 +83,7 @@ android { namespace = "com.example.miniapp"; compileSdk = 36
     buildFeatures { buildConfig = true }
 }
 tasks.configureEach {
-    if (name == "preBuild") dependsOn(prepareTelegramPackage, prepareLocalizedLauncher, prepareBundledApps)
+    if (name == "preBuild") dependsOn(prepareTelegramPackage, prepareBundledApps)
     if (name == "packageRelease" || name == "signReleaseBundle") doFirst {
         check(localSigning || releaseSigningReady) { "Release signing requires MINIAPPS_ANDROID_KEYSTORE, MINIAPPS_ANDROID_STORE_PASSWORD, MINIAPPS_ANDROID_KEY_ALIAS, and MINIAPPS_ANDROID_KEY_PASSWORD; use BuildAndroid.cmd Local for a locally signed APK" }
     }

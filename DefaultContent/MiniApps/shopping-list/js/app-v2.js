@@ -1016,11 +1016,28 @@
     }
   }
 
-  const app = new ShoppingApplication();
-  globalThis.shoppingApp = app;
-  elements.headerMenuButton.dataset.action = 'open-main-menu';
-  elements.modalBackdrop.addEventListener('click', event => {
-    if (event.target === elements.modalBackdrop) app.closeModal();
-  });
-  void app.init();
+  async function boot() {
+    let language;
+    try {
+      language = (await globalThis.mini?.locale?.get?.())?.preferred;
+    } catch {
+      // Use the browser language when the runtime does not provide a preference.
+    }
+    document.documentElement.lang = /^ru(?:-|$)/i.test(language ?? navigator.language) ? 'ru' : 'en';
+    for (const node of document.querySelectorAll('[data-i18n]')) {
+      node.textContent = translate(node.dataset.i18n);
+    }
+    for (const node of document.querySelectorAll('[data-i18n-aria-label]')) {
+      node.setAttribute('aria-label', translate(node.dataset.i18nAriaLabel));
+    }
+
+    const app = new ShoppingApplication();
+    globalThis.shoppingApp = app;
+    elements.headerMenuButton.dataset.action = 'open-main-menu';
+    elements.modalBackdrop.addEventListener('click', event => {
+      if (event.target === elements.modalBackdrop) app.closeModal();
+    });
+    await app.init();
+  }
+  void boot();
 })();

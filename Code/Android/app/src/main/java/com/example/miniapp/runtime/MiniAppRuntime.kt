@@ -118,7 +118,7 @@ class MiniAppRuntime(private val activity:MiniAppActivity, private val web:WebVi
  private fun state()=JSONObject().put("backEnabled",backEnabled)
  fun setLaunchParams(value:JSONObject){launchParams=value;event("app.launchParamsChanged",getLaunchParameters())}
  private fun getLaunchParameters() = JSONObject(launchParams.toString()).put("locale", localeInfo())
- private fun localeInfo() = JSONObject().put("preferred", preferredLanguage).put("resolved", manifest.language ?: JSONObject.NULL)
+ private fun localeInfo() = JSONObject().put("preferred", preferredLanguage)
  fun markUserGesture(){lastUserGestureAt=android.os.SystemClock.elapsedRealtime()}
  private fun requireUserGesture(){if(android.os.SystemClock.elapsedRealtime()-lastUserGestureAt>1_000)throw ApiException("user_gesture_required","A recent user gesture is required")}
  fun completeNotificationPermission(id:String,granted:Boolean){permissions.decide("notifications",granted);event("permissions.changed",JSONObject().put("permission","notifications").put("state",if(granted)"granted" else "denied"));send(BridgeResponse(id,true,if(granted)"granted" else "denied"))}

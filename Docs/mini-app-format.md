@@ -130,9 +130,11 @@ MiniApps/com.example.hsv/
 
 ## Localized mini-app packages
 
-Keep translations and localized pages inside the mini-app ZIP. All languages
-share the same app ID, permissions, version, storage and Telegram connection.
-A package can have one or several localized HTML entry points:
+Keep translation dictionaries inside the mini-app package. Use one HTML page
+and select its dictionary using `preferred` from `await mini.locale.get()`.
+Set the document's `lang` to the chosen language. All languages share the same
+app ID, permissions, version, storage and Telegram connection. Use the manifest
+to translate the name and description displayed by the launcher:
 
 ```json
 {
@@ -141,29 +143,22 @@ A package can have one or several localized HTML entry points:
   "version": "1.0.0",
   "sdkVersion": 2,
   "entry": "index.html",
-  "defaultLanguage": "en",
-  "locales": {
-    "en": { "entry": "index.html" },
-    "ru": { "entry": "ru/index.html", "name": "Заметки" }
+  "translations": {
+    "ru": { "name": "Заметки" }
   }
 }
 ```
 
-The runtime chooses an exact tag match, then removes trailing subtags until
-it finds a match. If none exists, it uses `defaultLanguage`. The default
-language must be declared and its entry must match the top-level `entry`.
-Localized entries must be existing `.html` files inside the package with
-ASCII letters, digits, hyphens, underscores, dots and slashes in their paths.
-Up to 32 entries are supported. Locale tags use letters and digits separated
-by hyphens and are matched case-insensitively. `name` and `description` are
-optional per locale. Packages without localization metadata still use their
-original entry. A single HTML app can use `mini.locale.get()` to select its
-own embedded translations.
+`translations` is optional and works in ZIP manifests and embedded manifests.
+Its supported keys are `en` and `ru`. Each translation contains `name`,
+`description`, or both. A missing field uses its top-level value. Translated
+names and descriptions must be nonblank strings of at most 256 and 1024
+characters, respectively. The top-level `entry` determines the page for
+every language.
 
-Set `lang` on each localized HTML page. Keep translated UI text separate from
-user content and use shared scripts and styles where possible. Build every
-language into the same ZIP so switching works offline. Importing that ZIP
-over an earlier language-specific package with the same ID preserves its data.
+Keep translated UI text separate from user content. Bundle every dictionary
+with the page so switching works offline. Importing an update with the same
+app ID preserves its data.
 
 ## HTML without manifest
 

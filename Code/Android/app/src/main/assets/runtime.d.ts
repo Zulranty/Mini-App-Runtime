@@ -16,7 +16,7 @@ type StreamReader = (offset: number, length: number, signal: AbortSignal) => Pro
 type StreamOptions = { size: number; mimeType: string };
 type DirectoryHandle = { id: string; name: string };
 type DirectoryEntry = DirectoryHandle & { directory: boolean; mimeType: string; size: number };
-type MiniLocale = { preferred: string; resolved: string | null };
+type MiniLocale = { preferred: 'en' | 'ru' };
 type SaveTextOptions = { suggestedName: string; mimeType: string; text: string; extensions?: string[] };
 type SaveBase64Options = { suggestedName: string; mimeType: string; base64: string; extensions?: string[] };
 type ShareFileOptions = {

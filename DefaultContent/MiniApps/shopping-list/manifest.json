@@ -1,7 +1,7 @@
 {
   "id": "com.sempai.shoppinglist",
   "name": "Shopping List",
-  "version": "2.2.10",
+  "version": "2.2.11",
   "minRuntimeVersion": "1.5.25",
   "sdkVersion": 2,
   "entry": "index.html",
@@ -12,13 +12,8 @@
     "storage",
     "telegram.session"
   ],
-  "defaultLanguage": "en",
-  "locales": {
-    "en": {
-      "entry": "index.html"
-    },
+  "translations": {
     "ru": {
-      "entry": "ru/index.html",
       "name": "Список покупок",
       "description": "Список покупок с локальным сохранением и синхронизацией через Telegram"
     }

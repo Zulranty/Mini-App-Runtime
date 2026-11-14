@@ -20,7 +20,7 @@ and scan behavior, see [Mini-app format](mini-app-format.md).
 
 The Android APK includes the Android-compatible built-in mini-apps and the Telegram shared module. After a fresh install or an APK update, open MiniApps and grant file access if prompted. MiniApps applies the bundled packages before showing the app list. This includes Shopping List, Unofficial Telegram and Telegram Cloud. If the installed mini-app has a higher version, MiniApps keeps it. A failed package is retried when the launcher next starts.
 
-Install the new APK over the existing MiniApps installation to retain private and secure storage. MiniApps updates each matching app in its existing folder and retains its public data. Localized entries in a bundled package share one app ID and one set of data.
+Install the new APK over the existing MiniApps installation to retain private and secure storage. MiniApps updates each matching app in its existing folder and retains its public data. All languages of an app share its ID and data.
 
 The app-card menu can delete or share an app and share its public `storage.json`. App sharing creates a single HTML file only for a self-contained HTML app with an embedded manifest; otherwise it creates a ZIP containing the app code. User data, including `storage.json`, is excluded. Data sharing exports only public `storage.json`. Deletion also clears private storage and stored permission decisions. Android uses the system Sharesheet with a `content://` FileProvider; Windows copies a file to the clipboard for pasting into Explorer or another application. Windows `mini.share.text()` and `mini.share.file()` also copy their text or file payload to the clipboard. Private storage is never exported.
 
@@ -41,10 +41,8 @@ The server choice applies when you next open Unofficial Telegram directly.
 The **Unofficial Telegram** app card shows the client version. Use the Telegram
 settings action to reinstall the included module and client when needed.
 
-Both built-in launcher interfaces include **Telegram** in the existing
-**Settings** screen. Android upgrades recognized older Default and Metro
-templates in place, keeping the active interface and its settings. Custom
-interfaces can add the Telegram controls to their settings using the launcher API.
+Both built-in launcher interfaces include **Telegram** in **Settings**.
+Custom interfaces can add the Telegram controls using the launcher API.
 
 After successful installation, choose **Yes** to restart MiniApps immediately
 or **No** to keep working. Custom launcher interfaces can use
@@ -57,4 +55,4 @@ to add the two switches and the login-log viewer to a custom Telegram settings p
 
 On Android, interfaces reside in `MiniApps/Interface/<interface-id>/`; on Windows, they reside in `Interface/<interface-id>/` beside `MiniApps.exe`. Select the active interface in **Settings → Interface**; it is used by both the launcher and mini-app app bars. The built-in `default` contains only `index.html`, with its CSS and launcher JavaScript embedded. HTML and ZIP files placed directly in `Interface/` are scanned as new interfaces; the same import is available from **Add interface**. Folder and ZIP interfaces may contain additional files. An interface-specific mini-app app bar is stored beside the interface as `appbar.css` and `appbar.js`.
 
-If the active interface is removed manually, the runtime selects and saves the first valid interface alphabetically on the next launch. A valid interface folder contains `index.html`.
+If the active interface is removed manually, Android selects Default and Windows selects the first valid interface alphabetically on the next launch. A valid interface folder contains `index.html`.

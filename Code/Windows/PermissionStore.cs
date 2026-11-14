@@ -78,8 +78,8 @@ internal sealed class PermissionStore(MiniManifest manifest)
         return states;
     }
 
-    private static string[] LegacyNames(MiniManifest app) => app.Locales.Values
-        .Select(locale => locale.Name).OfType<string>().Append(app.Name)
+    private static string[] LegacyNames(MiniManifest app) => app.Translations.Values
+        .Select(translation => translation.Name).OfType<string>().Append(app.Name)
         .Select(name => Path.Combine(DirectoryPath, LegacyFileName(name)))
         .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 

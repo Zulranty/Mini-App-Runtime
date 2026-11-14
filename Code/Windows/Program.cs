@@ -44,17 +44,13 @@ internal static class Program
 internal sealed record NetworkPolicy(IReadOnlySet<string> Allow, bool AllowSubdomains, bool AllowHttp, bool AllowLocalNetwork, IReadOnlySet<string>? DiscoveryServices = null);
 internal sealed record MiniManifest(string Id, string Name, string Version, int SdkVersion, string Entry, HashSet<string> Permissions, string? MinRuntimeVersion, NetworkPolicy? Network)
 {
-    public string? DefaultLanguage { get; init; }
-    public IReadOnlyDictionary<string, LocalizedEntry> Locales { get; init; } = new Dictionary<string, LocalizedEntry>();
-    public string? Language { get; init; }
-    public string? LocalizedDescription => Language is not null ? Locales[Language].Description : null;
+    public string? Description { get; init; }
+    public IReadOnlyDictionary<string, AppTranslation> Translations { get; init; } = new Dictionary<string, AppTranslation>();
 
     public MiniManifest Localize(string preference)
     {
-        if (DefaultLanguage is null) return this;
-        var language = AppLanguage.Match(preference, Locales.Keys, DefaultLanguage);
-        var locale = Locales[language];
-        return this with { Entry = locale.Entry, Name = locale.Name ?? Name, Language = language };
+        if (!Translations.TryGetValue(preference, out var translation)) return this;
+        return this with { Name = translation.Name ?? Name, Description = translation.Description ?? Description };
     }
 
     public static MiniManifest Parse(string json)
@@ -87,12 +83,11 @@ internal sealed record MiniManifest(string Id, string Name, string Version, int 
                 throw new ApiError("source_file_invalid", "Invalid network configuration");
             network = new NetworkPolicy(allow, config["allowSubdomains"]?.GetValue<bool>() == true, allowHttp, allowLocal, services);
         }
-        var defaultLanguage = node["defaultLanguage"]?.GetValue<string>();
-        var locales = AppLanguage.ReadEntries(node["locales"], defaultLanguage);
-        if (locales.Count > 0 && locales[AppLanguage.Normalize(defaultLanguage)!].Entry != entry)
-            throw new ApiError("source_file_invalid", "The default language must use the main entry");
         return new(id, name, version, sdkVersion, entry, permissions, minRuntimeVersion, network)
-        { DefaultLanguage = AppLanguage.Normalize(defaultLanguage), Locales = locales };
+        {
+            Description = node["description"]?.GetValue<string>(),
+            Translations = AppLanguage.ReadTranslations(node["translations"])
+        };
     }
 
     internal static bool ValidId(string id) => Regex.IsMatch(id, @"\A[A-Za-z0-9._-]+\z") && id is not ("." or "..");
@@ -270,6 +265,9 @@ internal static partial class MiniStore
         var ext = Path.GetExtension(source).ToLowerInvariant();
         if (ext is not (".zip" or ".html" or ".htm")) throw new ApiError("source_file_invalid", "Only ZIP and HTML files are supported");
         var id = FolderName(Path.GetFileNameWithoutExtension(source));
+        if (!MiniManifest.ValidId(id) || id.Equals("default", StringComparison.OrdinalIgnoreCase) ||
+            id.Equals("Metro-Interface", StringComparison.OrdinalIgnoreCase))
+            throw new ApiError("source_file_invalid", "Interface name is reserved or invalid");
         var staging = Path.Combine(InterfaceRoot, "." + id + "-" + Guid.NewGuid().ToString("N"));
         var backup = Path.Combine(InterfaceRoot, "." + id + "-old-" + Guid.NewGuid().ToString("N"));
         var target = Path.Combine(InterfaceRoot, id);
@@ -386,14 +384,13 @@ internal static partial class MiniStore
                     node = JsonNode.Parse(match.Groups[1].Value)?.AsObject() ?? throw new ApiError("source_file_invalid", "Invalid embedded manifest");
                 }
                 else node = new JsonObject { ["id"] = manual.Id, ["name"] = manual.Name, ["version"] = manual.Version, ["sdkVersion"] = manual.SdkVersion, ["permissions"] = new JsonArray(manual.Permissions.Order().Select(permission => (JsonNode)permission).ToArray()) };
-                if (node["locales"] is not null) throw new ApiError("source_file_invalid", "Localized entries require a ZIP package");
                 var entry = MiniManifest.HtmlEntryForName(node["name"]?.GetValue<string>() ?? "");
                 node["entry"] = entry;
                 incoming = MiniManifest.Parse(node.ToJsonString()); File.Copy(source, Path.Combine(temp, entry)); File.WriteAllText(Path.Combine(temp, "manifest.json"), node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
             }
             if (incoming.Id == TelegramSessionLease.ClientAppId && !bundled && !trustedProvider)
                 throw new ApiError("source_file_invalid", "Install the Telegram provider from the launcher");
-            if (!HasEntries(temp, incoming))
+            if (!HasEntry(temp, incoming))
                 throw new ApiError("source_file_invalid", "App entry file is missing");
             var bundledHash = bundled ? FileSha256(source) : null;
             if (bundledHash is not null && BundledStampMatches(incoming.Id, bundledHash))
@@ -425,7 +422,7 @@ internal static partial class MiniStore
         var result = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "manifest.json")))?.AsObject() ?? new JsonObject();
         result["name"] = manifest.Name;
         result["entry"] = manifest.Entry;
-        if (manifest.LocalizedDescription is { } description) result["description"] = description;
+        if (manifest.Description is { } description) result["description"] = description;
         var metadata = AppInfoMetadata(manifest.Id); var fallback = new DateTimeOffset(Directory.GetLastWriteTimeUtc(directory)).ToString("O");
         var installedAt = metadata["installedAt"]?.GetValue<string>() ?? fallback; var updatedAt = metadata["updatedAt"]?.GetValue<string>() ?? installedAt;
         var publicData = FileSize(Path.Combine(directory, "storage.json")) + FileSize(Path.Combine(directory, "storage.json.bak")); var privateData = PrivateStorageSize(manifest.Id); var secureData = SecureStorageStore.SizeFor(manifest.Id);
@@ -456,7 +453,7 @@ internal static partial class MiniStore
         var directory = RollbackPath(id);
         var previous = Path.Combine(directory, "app");
         var manifest = TryRead(Path.Combine(previous, "manifest.json"));
-        if (manifest is null || manifest.Id != id || !HasEntries(previous, manifest))
+        if (manifest is null || manifest.Id != id || !HasEntry(previous, manifest))
             return new JsonObject { ["available"] = false };
         try
         {
@@ -489,7 +486,7 @@ internal static partial class MiniStore
             var previous = Path.Combine(RollbackPath(id), "app");
             var manifest = TryRead(Path.Combine(previous, "manifest.json"))
                 ?? throw new ApiError("rollback_not_available", "Rollback is not available");
-            if (manifest.Id != id || !HasEntries(previous, manifest))
+            if (manifest.Id != id || !HasEntry(previous, manifest))
                 throw new ApiError("rollback_failed", "The retained package is incomplete or has a different ID");
             var ready = Path.Combine(RuntimeStateRoot, "staging", $"rollback-{Guid.NewGuid():N}");
             try
@@ -624,11 +621,8 @@ internal sealed class LauncherForm : Form
 
     private void MapLauncherInterface()
     {
-        var root = MiniStore.ActiveLauncherInterfaceRoot;
-        var page = AppLanguage.StockLauncherPage(root, AppLanguage.Preference());
-        if (page is not null && File.Exists(page)) root = Path.GetDirectoryName(page)!;
         web.CoreWebView2.ClearVirtualHostNameToFolderMapping("launcher.local");
-        web.CoreWebView2.SetVirtualHostNameToFolderMapping("launcher.local", root, CoreWebView2HostResourceAccessKind.DenyCors);
+        web.CoreWebView2.SetVirtualHostNameToFolderMapping("launcher.local", MiniStore.ActiveLauncherInterfaceRoot, CoreWebView2HostResourceAccessKind.DenyCors);
     }
 
     private void HandleRequest(string raw)
@@ -645,7 +639,7 @@ internal sealed class LauncherForm : Form
                     var language = AppLanguage.Preference();
                     Reply(id, true, new JsonArray(MiniStore.Apps().Select(x => x.Manifest.Localize(language)).Select(app =>
                         (JsonNode)new JsonObject { ["id"] = app.Id, ["name"] = app.Name, ["version"] = app.Version,
-                            ["description"] = app.LocalizedDescription }).ToArray()), null, null);
+                            ["description"] = app.Description }).ToArray()), null, null);
                     break;
                 }
                 case "apps.getAppInfo":
@@ -667,7 +661,7 @@ internal sealed class LauncherForm : Form
                     break;
                 case "telegram.installStatus": Reply(id, true, JsonValue.Create(TelegramPackage.HasClient()), null, null); break;
                 case "language.get": Reply(id, true, JsonValue.Create(AppLanguage.Preference()), null, null); break;
-                case "language.set": AppLanguage.Save(request["params"]?["language"]?.GetValue<string>()); MapLauncherInterface(); Reply(id, true, null, null, null); break;
+                case "language.set": AppLanguage.Save(request["params"]?["language"]?.GetValue<string>()); Reply(id, true, null, null, null); break;
                 case "telegram.install": _ = InstallTelegramAsync(id); break;
                 case "telegram.settings.get": Reply(id, true, TelegramSettings.Read(), null, null); break;
                 case "telegram.settings.set": Reply(id, true, TelegramSettings.Save(request["params"]), null, null); break;

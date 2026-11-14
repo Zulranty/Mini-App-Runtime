@@ -4,17 +4,23 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#080d18" />
-  <title>Date calculator</title>
+  <title data-i18n="dateCalculator">Date calculator</title>
 
   <script type="application/miniapp+json">
   {
     "id": "com.htmlframework.datecalculator",
     "name": "Date calculator",
-    "version": "1.2.0",
+    "version": "1.2.2",
     "sdkVersion": 1,
     "description": "Calculation of years, months, weeks and days between dates",
     "author": "Denis",
-    "permissions": []
+    "permissions": [],
+    "translations": {
+      "ru": {
+        "name": "Калькулятор дат",
+        "description": "Расчёт лет, месяцев, недель и дней между датами"
+      }
+    }
   }
   </script>
 
@@ -498,12 +504,12 @@
 
 <body>
   <main class="app">
-    <section class="calculator" aria-label="Date difference calculator">
+    <section class="calculator" aria-label="Date difference calculator" data-i18n-aria-label="dateDifferenceCalculator">
       <div class="date-grid">
         <div class="date-card">
           <div class="date-label">
-            <strong>First date</strong>
-            <span>DD.MM.YYYY</span>
+            <strong data-i18n="firstDate">First date</strong>
+            <span data-i18n="dateFormatHint">DD.MM.YYYY</span>
           </div>
 
           <div class="date-input-wrap">
@@ -515,10 +521,10 @@
               autocomplete="off"
               maxlength="10"
               placeholder="01.01.2025"
-              aria-label="First date"
+              aria-label="First date" data-i18n-aria-label="firstDate"
             />
 
-            <button class="calendar-button" id="startCalendarButton" type="button" aria-label="Open first-date calendar">
+            <button class="calendar-button" id="startCalendarButton" type="button" aria-label="Open first-date calendar" data-i18n-aria-label="openFirstDateCalendar">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M7 3v3M17 3v3M4.5 9.5h15M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/>
                 <path d="M8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01"/>
@@ -528,17 +534,17 @@
             <input class="native-date" id="startNative" type="date" tabindex="-1" aria-hidden="true" />
           </div>
 
-          <div class="helper" id="startHelper">Separators are inserted automatically.</div>
+          <div class="helper" id="startHelper" data-i18n="separatorsAreInsertedAutomatically">Separators are inserted automatically.</div>
 
           <div class="quick-actions">
-            <button class="quick-button" type="button" data-target="start" data-action="today">Today</button>
-            <button class="quick-button" type="button" data-target="start" data-action="year-start">Start of year</button>
+            <button class="quick-button" type="button" data-target="start" data-action="today" data-i18n="today">Today</button>
+            <button class="quick-button" type="button" data-target="start" data-action="year-start" data-i18n="startOfYear">Start of year</button>
           </div>
         </div>
         <div class="date-card">
           <div class="date-label">
-            <strong>Second date</strong>
-            <span>DD.MM.YYYY</span>
+            <strong data-i18n="secondDate">Second date</strong>
+            <span data-i18n="dateFormatHint">DD.MM.YYYY</span>
           </div>
 
           <div class="date-input-wrap">
@@ -550,10 +556,10 @@
               autocomplete="off"
               maxlength="10"
               placeholder="01.01.2026"
-              aria-label="Second date"
+              aria-label="Second date" data-i18n-aria-label="secondDate"
             />
 
-            <button class="calendar-button" id="endCalendarButton" type="button" aria-label="Open second-date calendar">
+            <button class="calendar-button" id="endCalendarButton" type="button" aria-label="Open second-date calendar" data-i18n-aria-label="openSecondDateCalendar">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M7 3v3M17 3v3M4.5 9.5h15M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/>
                 <path d="M8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01"/>
@@ -563,17 +569,17 @@
             <input class="native-date" id="endNative" type="date" tabindex="-1" aria-hidden="true" />
           </div>
 
-          <div class="helper" id="endHelper">The date is validated automatically.</div>
+          <div class="helper" id="endHelper" data-i18n="theDateIsValidatedAutomatically">The date is validated automatically.</div>
 
           <div class="quick-actions">
-            <button class="quick-button" type="button" data-target="end" data-action="today">Today</button>
-            <button class="quick-button" type="button" data-target="end" data-action="year-end">End of year</button>
+            <button class="quick-button" type="button" data-target="end" data-action="today" data-i18n="today">Today</button>
+            <button class="quick-button" type="button" data-target="end" data-action="year-end" data-i18n="endOfYear">End of year</button>
           </div>
         </div>
       </div>
 
       <div class="footer-row">
-        <button class="clear-button" id="clearButton" type="button">Clear</button>
+        <button class="clear-button" id="clearButton" type="button" data-i18n="clear">Clear</button>
       </div>
 
       <div class="message" id="message" aria-live="polite"></div>
@@ -581,48 +587,143 @@
 
     <section class="results" id="results" aria-live="polite">
       <article class="report-card" id="yearsCard" hidden>
-        <div class="report-label">Years</div>
+        <div class="report-label" data-i18n="years">Years</div>
         <div class="report-line">
           <strong id="yearsValue">0</strong>
-          <span id="yearsUnit">years</span>
+          <span id="yearsUnit" data-i18n="yearMany">years</span>
         </div>
         <div class="report-rest" id="yearsRest"></div>
       </article>
 
       <article class="report-card" id="monthsCard" hidden>
-        <div class="report-label">Months</div>
+        <div class="report-label" data-i18n="months">Months</div>
         <div class="report-line">
           <strong id="totalMonthsValue">0</strong>
-          <span id="totalMonthsUnit">months</span>
+          <span id="totalMonthsUnit" data-i18n="monthMany">months</span>
         </div>
         <div class="report-rest" id="monthsRest"></div>
       </article>
 
       <article class="report-card" id="weeksCard" hidden>
-        <div class="report-label">Weeks</div>
+        <div class="report-label" data-i18n="weeks">Weeks</div>
         <div class="report-line">
           <strong id="totalWeeksValue">0</strong>
-          <span id="totalWeeksUnit">weeks</span>
+          <span id="totalWeeksUnit" data-i18n="weekMany">weeks</span>
         </div>
         <div class="report-rest" id="weeksRest"></div>
       </article>
 
       <article class="report-card" id="daysCard" hidden>
-        <div class="report-label">Days</div>
+        <div class="report-label" data-i18n="days">Days</div>
         <div class="report-line">
           <strong id="totalDaysValue">0</strong>
-          <span id="totalDaysUnit">days</span>
+          <span id="totalDaysUnit" data-i18n="dayMany">days</span>
         </div>
       </article>
     </section>
   </main>
 
   <script>
-    (() => {
+    (async () => {
       "use strict";
 
+      const messages = {
+        en: {
+          absoluteDifference: "Date order does not matter — the absolute difference is shown.",
+          and: " and ",
+          checkTheDates: "Check the dates.",
+          clear: "Clear",
+          dateCalculator: "Date calculator",
+          dateDifferenceCalculator: "Date difference calculator",
+          dateFormatHint: "DD.MM.YYYY",
+          dayFew: "days",
+          dayMany: "days",
+          dayOne: "day",
+          days: "Days",
+          endOfYear: "End of year",
+          firstDate: "First date",
+          monthFew: "months",
+          monthMany: "months",
+          monthOne: "month",
+          months: "Months",
+          openFirstDateCalendar: "Open first-date calendar",
+          openSecondDateCalendar: "Open second-date calendar",
+          remaining: " remaining",
+          secondDate: "Second date",
+          separatorsAreInsertedAutomatically: "Separators are inserted automatically.",
+          startOfYear: "Start of year",
+          theDateIsValidatedAutomatically: "The date is validated automatically.",
+          theDatesAreTheSame: "The dates are the same.",
+          thisDateDoesNotExist: "This date does not exist.",
+          today: "Today",
+          weekFew: "weeks",
+          weekMany: "weeks",
+          weekOne: "week",
+          weeks: "Weeks",
+          yearFew: "years",
+          yearMany: "years",
+          yearOne: "year",
+          years: "Years"
+        },
+        ru: {
+          absoluteDifference: "Порядок дат не важен — показана абсолютная разница.",
+          and: " и ",
+          checkTheDates: "Проверь даты.",
+          clear: "Очистить",
+          dateCalculator: "Калькулятор дат",
+          dateDifferenceCalculator: "Калькулятор разницы между датами",
+          dateFormatHint: "ДД.ММ.ГГГГ",
+          dayFew: "дня",
+          dayMany: "дней",
+          dayOne: "день",
+          days: "Дни",
+          endOfYear: "Конец года",
+          firstDate: "Первая дата",
+          monthFew: "месяца",
+          monthMany: "месяцев",
+          monthOne: "месяц",
+          months: "Месяцы",
+          openFirstDateCalendar: "Открыть календарь первой даты",
+          openSecondDateCalendar: "Открыть календарь второй даты",
+          remaining: " в остатке",
+          secondDate: "Вторая дата",
+          separatorsAreInsertedAutomatically: "Точки подставятся автоматически.",
+          startOfYear: "Начало года",
+          theDateIsValidatedAutomatically: "Дата проверяется автоматически.",
+          theDatesAreTheSame: "Даты совпадают.",
+          thisDateDoesNotExist: "Такой даты не существует.",
+          today: "Сегодня",
+          weekFew: "недели",
+          weekMany: "недель",
+          weekOne: "неделя",
+          weeks: "Недели",
+          yearFew: "года",
+          yearMany: "лет",
+          yearOne: "год",
+          years: "Годы"
+        }
+      };
+
+      let preferredLanguage;
+      try {
+        preferredLanguage = (await globalThis.mini?.locale?.get?.())?.preferred;
+      } catch {
+        // Use the browser language when the runtime does not provide a preference.
+      }
+      const language = /^ru(?:-|$)/i.test(preferredLanguage ?? navigator.language) ? 'ru' : 'en';
+      const t = key => messages[language][key];
+      document.documentElement.lang = language;
+      for (const node of document.querySelectorAll('[data-i18n]')) node.textContent = t(node.dataset.i18n);
+      for (const attribute of ['aria-label', 'title', 'placeholder']) {
+        const marker = 'data-i18n-' + attribute;
+        for (const node of document.querySelectorAll('[' + marker + ']')) {
+          node.setAttribute(attribute, t(node.getAttribute(marker)));
+        }
+      }
+
       const DAY_MS = 24 * 60 * 60 * 1000;
-      const numberFormatter = new Intl.NumberFormat("ru-RU");
+      const numberFormatter = new Intl.NumberFormat(language);
+      const pluralRules = new Intl.PluralRules(language);
 
       const elements = {
         startText: document.getElementById("startText"),
@@ -730,12 +831,9 @@
       }
 
       function plural(number, one, few, many) {
-        const absolute = Math.abs(number) % 100;
-        const last = absolute % 10;
-
-        if (absolute > 10 && absolute < 20) return many;
-        if (last > 1 && last < 5) return few;
-        if (last === 1) return one;
+        const category = pluralRules.select(number);
+        if (category === "one") return one;
+        if (category === "few") return few;
         return many;
       }
 
@@ -808,13 +906,13 @@
               text: elements.startText,
               native: elements.startNative,
               helper: elements.startHelper,
-              normalHelper: "Separators are inserted automatically."
+              normalHelper: t('separatorsAreInsertedAutomatically')
             }
           : {
               text: elements.endText,
               native: elements.endNative,
               helper: elements.endHelper,
-              normalHelper: "The date is validated automatically."
+              normalHelper: t('theDateIsValidatedAutomatically')
             };
       }
 
@@ -849,7 +947,7 @@
         const date = parseDisplayDate(field.text.value);
 
         if (!date) {
-          setFieldError(name, "This date does not exist.");
+          setFieldError(name, t('thisDateDoesNotExist'));
           return null;
         }
 
@@ -902,33 +1000,33 @@
 
         if (hasYears) {
           elements.yearsValue.textContent = numberFormatter.format(result.years);
-          elements.yearsUnit.textContent = plural(result.years, "year", "years", "years");
+          elements.yearsUnit.textContent = plural(result.years, t('yearOne'), t('yearFew'), t('yearMany'));
           elements.yearsRest.textContent =
             `${numberFormatter.format(result.remainingMonths)} ` +
-            `${plural(result.remainingMonths, "month", "months", "months")} and` +
+            `${plural(result.remainingMonths, t('monthOne'), t('monthFew'), t('monthMany'))}${t('and')}` +
             `${numberFormatter.format(result.yearsRemainingDays)} ` +
-            `${plural(result.yearsRemainingDays, "day", "days", "days")} remaining`;
+            `${plural(result.yearsRemainingDays, t('dayOne'), t('dayFew'), t('dayMany'))}${t('remaining')}`;
         }
 
         if (hasMonths) {
           elements.totalMonthsValue.textContent = numberFormatter.format(result.totalMonths);
-          elements.totalMonthsUnit.textContent = plural(result.totalMonths, "month", "months", "months");
+          elements.totalMonthsUnit.textContent = plural(result.totalMonths, t('monthOne'), t('monthFew'), t('monthMany'));
           elements.monthsRest.textContent =
             `${numberFormatter.format(result.monthsRemainingDays)} ` +
-            `${plural(result.monthsRemainingDays, "day", "days", "days")} remaining`;
+            `${plural(result.monthsRemainingDays, t('dayOne'), t('dayFew'), t('dayMany'))}${t('remaining')}`;
         }
 
         if (hasWeeks) {
           elements.totalWeeksValue.textContent = numberFormatter.format(result.totalWeeks);
-          elements.totalWeeksUnit.textContent = plural(result.totalWeeks, "week", "weeks", "weeks");
+          elements.totalWeeksUnit.textContent = plural(result.totalWeeks, t('weekOne'), t('weekFew'), t('weekMany'));
           elements.weeksRest.textContent =
             `${numberFormatter.format(result.weeksRemainingDays)} ` +
-            `${plural(result.weeksRemainingDays, "day", "days", "days")} remaining`;
+            `${plural(result.weeksRemainingDays, t('dayOne'), t('dayFew'), t('dayMany'))}${t('remaining')}`;
         }
 
         if (hasDays) {
           elements.totalDaysValue.textContent = numberFormatter.format(result.totalDays);
-          elements.totalDaysUnit.textContent = plural(result.totalDays, "day", "days", "days");
+          elements.totalDaysUnit.textContent = plural(result.totalDays, t('dayOne'), t('dayFew'), t('dayMany'));
         }
 
         elements.results.classList.remove("pulse");
@@ -936,9 +1034,9 @@
         elements.results.classList.add("pulse");
 
         if (!hasDays) {
-          setMessage("The dates are the same.");
+          setMessage(t('theDatesAreTheSame'));
         } else if (result.reversed) {
-          setMessage("Date order does not matter ? the absolute difference is shown.");
+          setMessage(t('absoluteDifference'));
         } else {
           setMessage("");
         }
@@ -959,7 +1057,7 @@
 
         if (!startDate || !endDate) {
           hideResults();
-          setMessage("Check the dates.", "error");
+          setMessage(t('checkTheDates'), "error");
           return;
         }
 
