@@ -59,9 +59,16 @@ internal sealed class WinFormsFileSaveDialog : IFileSaveDialog
 {
     public Stream? Open(IWin32Window owner, SaveFileRequest request)
     {
-        using var dialog = new SaveFileDialog { FileName = request.Name, AddExtension = true, OverwritePrompt = true, CheckPathExists = true, RestoreDirectory = true, DefaultExt = request.Extensions.FirstOrDefault()?.TrimStart('.') ?? ExtensionForMime(request.MimeType), Filter = Filter(request) };
+        using var dialog = Create(request);
         return dialog.ShowDialog(owner) == DialogResult.OK ? dialog.OpenFile() : null;
     }
+    internal static string? ChoosePath(IWin32Window owner, SaveFileRequest request)
+    {
+        using var dialog = Create(request);
+        return dialog.ShowDialog(owner) == DialogResult.OK ? dialog.FileName : null;
+    }
+    private static SaveFileDialog Create(SaveFileRequest request) =>
+        new() { FileName = request.Name, AddExtension = true, OverwritePrompt = true, CheckPathExists = true, RestoreDirectory = true, DefaultExt = request.Extensions.FirstOrDefault()?.TrimStart('.') ?? ExtensionForMime(request.MimeType), Filter = Filter(request) };
     private static string Filter(SaveFileRequest r) => r.Extensions.Count == 0 ? $"{r.MimeType}|*.*|All files|*.*" : $"{r.MimeType}|{string.Join(';', r.Extensions.Select(x => "*" + x))}|All files|*.*";
     private static string ExtensionForMime(string mime) => mime == "text/plain" ? "txt" : "";
 }

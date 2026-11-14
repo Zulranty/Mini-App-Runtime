@@ -29,8 +29,8 @@ if ($Target -eq "Android") {
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_) } |
         Select-Object -First 1
     if (-not $androidSdk) { Fail "Android SDK was not found. Set ANDROID_SDK_ROOT or ANDROID_HOME." }
-    if (-not (Test-Path -LiteralPath (Join-Path $androidSdk "platforms\android-35"))) {
-        Fail "Android SDK Platform 35 is required: $androidSdk"
+    if (-not (Test-Path -LiteralPath (Join-Path $androidSdk "platforms\android-36"))) {
+        Fail "Android SDK Platform 36 is required: $androidSdk"
     }
 
     if (-not $LocalSigning) {
@@ -49,12 +49,12 @@ if ($Target -eq "Android") {
 }
 
 $dotnet = Get-Command dotnet.exe -ErrorAction SilentlyContinue
-if (-not $dotnet) { Fail ".NET SDK 8 or newer is required. dotnet.exe was not found in PATH." }
+if (-not $dotnet) { Fail ".NET SDK 10 or newer is required. dotnet.exe was not found in PATH." }
 $sdkVersions = (& $dotnet.Source --list-sdks 2>&1 | ForEach-Object {
     if ($_ -match '^(\d+)\.') { [int]$Matches[1] }
 })
-if (-not ($sdkVersions | Where-Object { $_ -ge 8 })) {
-    Fail ".NET SDK 8 or newer is required."
+if (-not ($sdkVersions | Where-Object { $_ -ge 10 })) {
+    Fail ".NET SDK 10 or newer is required."
 }
 
 $isccPath = (Get-Command iscc.exe -ErrorAction SilentlyContinue).Source
@@ -69,7 +69,19 @@ if ([string]::IsNullOrWhiteSpace($isccPath)) { Fail "Inno Setup 6 is required. i
 $isccVersion = if ($innoSetup6) { $innoSetup6.DisplayVersion } else { (Get-Item -LiteralPath $isccPath).VersionInfo.ProductVersion }
 if (-not $innoSetup6) {
     $isccMatch = [regex]::Match($isccVersion, '(\d+)(?:\.|$)')
-    if ($isccMatch.Success -and [int]$isccMatch.Groups[1].Value -lt 6) {
+    if (-not $isccMatch.Success -or [int]$isccMatch.Groups[1].Value -eq 0) {
+        # Some portable releases expose 0.0.0.0 in the executable metadata.
+        # ISCC prints its major version before checking that the script exists.
+        $missingScript = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString("N") + ".iss")
+        $banner = (& {
+            $ErrorActionPreference = "Continue"
+            & $isccPath $missingScript 2>$null
+        }) -join [Environment]::NewLine
+        $isccMatch = [regex]::Match($banner, '(?m)^Inno Setup (\d+) Command-Line Compiler\r?$')
+        if (-not $isccMatch.Success) { Fail "Could not determine the Inno Setup compiler version." }
+        $isccVersion = $isccMatch.Groups[1].Value
+    }
+    if ([int]($isccVersion -split "\.")[0] -lt 6) {
         Fail "Inno Setup 6 or newer is required. Found: $isccVersion"
     }
 }

@@ -22,7 +22,14 @@ internal static class NetworkRequestValidator
         var timeout = p["timeoutMs"]?.GetValue<int>() ?? 30_000;
         if (timeout is < 1 or > 120_000) throw new ApiError("invalid_params", "timeoutMs is invalid");
         var headers = Headers(p); var body = Body(p);
-        using var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false };
+        using var handler = new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            UseCookies = false,
+            UseProxy = false,
+            ConnectCallback = (context, cancellationToken) =>
+                ConnectAsync(context.DnsEndPoint, policy.AllowLocalNetwork, cancellationToken)
+        };
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromMilliseconds(timeout) };
         var redirected = false;
         var forwardRequestHeaders = true;
@@ -35,7 +42,8 @@ internal static class NetworkRequestValidator
             HttpResponseMessage response;
             try { response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead); }
             catch (TaskCanceledException) { throw new ApiError("network_timeout", "Request timed out"); }
-            catch (HttpRequestException error) when (error.InnerException is AuthenticationException) { throw new ApiError("network_tls_failed", "TLS failed"); }
+            catch (HttpRequestException error) when (error.InnerException is ApiError denied) { throw denied; }
+            catch (HttpRequestException error) when (error.HttpRequestError == HttpRequestError.SecureConnectionError || error.InnerException is AuthenticationException) { throw new ApiError("network_tls_failed", "TLS failed"); }
             catch (HttpRequestException) { throw new ApiError("network_request_failed", "Request failed"); }
             using (response)
             {
@@ -59,7 +67,6 @@ internal static class NetworkRequestValidator
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http") || !string.IsNullOrEmpty(uri.UserInfo)) throw new ApiError("network_invalid_url", "Invalid URL");
         if (uri.Scheme == "http" && !policy.AllowHttp) throw new ApiError("network_url_not_allowed", "HTTP is not allowed");
-        if (IsLocal(uri.Host) && !policy.AllowLocalNetwork) throw new ApiError("network_url_not_allowed", "Local network is not allowed");
         var allowed = policy.Allow.Any(rule => TryRule(rule, out var parsed) && RuleMatches(uri, parsed, policy.AllowSubdomains));
         if (!allowed) throw new ApiError("network_url_not_allowed", "URL is not allowed");
         return uri;
@@ -75,12 +82,65 @@ internal static class NetworkRequestValidator
         if (!Uri.TryCreate(normalized, UriKind.Absolute, out var uri) || uri.Port is < 1 or > 65535) { rule = default; return false; }
         rule = (uri.Scheme, wildcard ? uri.Host["wildcard.".Length..] : uri.Host, uri.Port, wildcard); return true;
     }
-    private static bool IsLocal(string host)
+    private static async ValueTask<Stream> ConnectAsync(
+        DnsEndPoint endpoint, bool allowLocalNetwork, CancellationToken cancellationToken)
     {
-        if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase)) return true;
-        if (!IPAddress.TryParse(host, out var address)) return false;
-        var bytes = address.MapToIPv4().GetAddressBytes(); return IPAddress.IsLoopback(address) || address.IsIPv6LinkLocal || bytes[0] == 10 || (bytes[0] == 172 && bytes[1] is >= 16 and <= 31) || (bytes[0] == 192 && bytes[1] == 168) || (bytes[0] == 169 && bytes[1] == 254);
+        var host = endpoint.Host.TrimEnd('.');
+        if (!allowLocalNetwork &&
+            (host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+             host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase)))
+            throw new ApiError("network_url_not_allowed", "Local network is not allowed");
+
+        var addresses = IPAddress.TryParse(endpoint.Host, out var literal)
+            ? new[] { literal }
+            : await Dns.GetHostAddressesAsync(endpoint.Host, cancellationToken);
+        if (!allowLocalNetwork && addresses.Any(address => !IsPublicAddress(address)))
+            throw new ApiError("network_url_not_allowed", "Local network is not allowed");
+        if (addresses.Length == 0) throw new SocketException((int)SocketError.HostNotFound);
+
+        var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+        try
+        {
+            // Connecting to the resolved addresses must not trigger a second DNS lookup.
+            await socket.ConnectAsync(addresses, endpoint.Port, cancellationToken);
+            return new NetworkStream(socket, ownsSocket: true);
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
     }
+
+    internal static bool IsPublicAddress(IPAddress address)
+    {
+        if (address.IsIPv4MappedToIPv6) address = address.MapToIPv4();
+        var bytes = address.GetAddressBytes();
+        if (address.AddressFamily == AddressFamily.InterNetwork) return IsPublicV4(bytes);
+        if (address.ScopeId != 0) return false;
+        // The well-known DNS64 prefix carries an IPv4 destination.
+        if (bytes.AsSpan(0, 12).SequenceEqual(new byte[] { 0, 0x64, 0xff, 0x9b, 0, 0, 0, 0, 0, 0, 0, 0 }))
+            return IsPublicV4(bytes.AsSpan(12));
+        // Global unicast, excluding protocol assignments, transition and documentation ranges.
+        return bytes[0] is >= 0x20 and <= 0x3f &&
+            !(bytes[0] == 0x20 && bytes[1] == 0x01 && (bytes[2] < 2 || (bytes[2] == 0x0d && bytes[3] == 0xb8))) &&
+            !(bytes[0] == 0x20 && bytes[1] == 0x02) &&
+            !(bytes[0] == 0x3f && bytes[1] == 0xfe) &&
+            !(bytes[0] == 0x3f && bytes[1] == 0xff && bytes[2] < 0x10);
+    }
+
+    private static bool IsPublicV4(ReadOnlySpan<byte> bytes) => bytes[0] switch
+    {
+        0 or 10 or 127 or >= 224 => false,
+        100 => bytes[1] is < 64 or > 127,
+        169 => bytes[1] != 254,
+        172 => bytes[1] is < 16 or > 31,
+        192 => bytes[1] != 168 && !(bytes[1] == 0 && bytes[2] is 0 or 2) &&
+            !(bytes[1] == 88 && bytes[2] == 99),
+        198 => bytes[1] is not (18 or 19) && !(bytes[1] == 51 && bytes[2] == 100),
+        203 => !(bytes[1] == 0 && bytes[2] == 113),
+        _ => true
+    };
     private static Dictionary<string, string> Headers(JsonObject p)
     {
         var output = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); foreach (var item in p["headers"]?.AsObject() ?? []) { var name = item.Key; var value = item.Value?.GetValue<string>() ?? throw new ApiError("invalid_params", "Invalid header"); if (name.Equals("Host", StringComparison.OrdinalIgnoreCase) || name.Equals("Connection", StringComparison.OrdinalIgnoreCase) || name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase) || name.Equals("Transfer-Encoding", StringComparison.OrdinalIgnoreCase) || name.Equals("Cookie", StringComparison.OrdinalIgnoreCase) || name.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase) || name.Equals("Proxy-Authorization", StringComparison.OrdinalIgnoreCase)) throw new ApiError("invalid_params", "Forbidden request header"); output[name] = value; } return output;

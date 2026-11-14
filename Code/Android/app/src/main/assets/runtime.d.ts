@@ -12,6 +12,11 @@ type MiniStorage = {
 };
 
 type SavedFileResult = { name: string; mimeType: string; sizeBytes: number };
+type StreamReader = (offset: number, length: number, signal: AbortSignal) => Promise<Uint8Array>;
+type StreamOptions = { size: number; mimeType: string };
+type DirectoryHandle = { id: string; name: string };
+type DirectoryEntry = DirectoryHandle & { directory: boolean; mimeType: string; size: number };
+type MiniLocale = { preferred: string; resolved: string | null };
 type SaveTextOptions = { suggestedName: string; mimeType: string; text: string; extensions?: string[] };
 type SaveBase64Options = { suggestedName: string; mimeType: string; base64: string; extensions?: string[] };
 type ShareFileOptions = {
@@ -20,13 +25,22 @@ type ShareFileOptions = {
 };
 
 declare const mini: {
+  locale: { get(): Promise<MiniLocale> };
   app: {
     getInfo(): Promise<any>;
     close(): Promise<void>;
     getRuntimeVersion(): Promise<string>;
+    getLaunchParams(): Promise<{ reason: string; notificationId?: string; payload?: object; locale: MiniLocale }>;
     onBackRequested(handler: () => boolean): void;
   };
   runtime: { getCapabilities(): Promise<any>; supports(name: string): Promise<boolean> };
+  logs: { write(event: string, fields?: Record<string, string | number | boolean | null>): Promise<{ path: string }> };
+  modules: { load(id: string): Promise<void> };
+  streams: {
+    open(options: StreamOptions, read: StreamReader): Promise<{ url: string; close(): Promise<void> }>;
+    save(options: StreamOptions & { suggestedName: string; directoryId?: string; folders?: string[] }, read: StreamReader, signal?: AbortSignal): Promise<SavedFileResult | null>;
+  };
+  functions: { call(method: string, params?: Record<string, unknown>): Promise<unknown> };
   navigation: { setBackEnabled(enabled: boolean): Promise<{ backEnabled: boolean }>; getState(): Promise<{ backEnabled: boolean }> };
   storage: MiniStorage & {
     private: MiniStorage;
@@ -46,6 +60,11 @@ declare const mini: {
   clipboard: { write(text: string): Promise<void> };
   files: {
     pick(options?: { mimeTypes?: string[] }): Promise<any>;
+    pickDirectory(): Promise<DirectoryHandle>;
+    listDirectory(id: string, options?: { limit?: number; cursor?: number }): Promise<{ entries: DirectoryEntry[]; nextCursor: number | null }>;
+    releaseDirectory(id: string): Promise<void>;
+    /** Windows-only. Check files.writeChecked support before calling. */
+    writeChecked(id: string, options: { path: string; base64: string; expectedSha256: string | null }): Promise<void>;
     readText(id: string): Promise<string>;
     readBase64(id: string): Promise<string>;
     release(id: string): Promise<void>;

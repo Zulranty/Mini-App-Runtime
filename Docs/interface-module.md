@@ -10,7 +10,7 @@ On Android it is created at:
 
 `Interface` is a collection of launcher themes. Each subfolder is one interface and must contain `index.html`; it may be a self-contained HTML file or a set of HTML/CSS/JS files. The active interface is selected in **Settings → Interface**. ZIP and HTML files placed directly in `Interface` are scanned into interface folders; the same formats can be added through the native file picker.
 
-The bundled `default/index.html` is self-contained: Android and Windows create only this one file for the default interface. Imported ZIP/folder interfaces may include additional files when their own `index.html` uses them.
+Both hosts package the self-contained Default and Metro launcher interfaces. Android copies Default to the shared folder if the default interface file is missing or empty, and upgrades known older stock HTML in installed theme folders. Recognized Russian Default and Metro templates are updated in place with the Russian Telegram settings tab. The update keeps the active interface, its settings, and other files in its folder. Older Metro templates that still use the Metro settings layout receive the Telegram tab from the runtime when Settings opens. Imported ZIP/folder interfaces may include additional files when their own `index.html` uses them.
 
 On Windows it is created beside `MiniApps.exe` in the selected installation folder:
 
@@ -23,6 +23,19 @@ The same `Interface/<name>/index.html` layout, active-interface selection, root 
 On Windows, the installer packages every interface from `DefaultContent/Interface`. Each interface is a folder with `index.html`; the default package is `DefaultContent/Interface/default/index.html`. Custom installed interface folders are preserved unless their packaged files share the same path.
 
 If the selected interface is removed outside the runtime, the next launch automatically selects and saves the first remaining valid interface (alphabetically by folder name). A valid interface is a subfolder containing `index.html`.
+
+## Language
+
+Select English or Russian in the launcher settings. In Metro, the control is
+under **Personalization**. In Default, it is under **About**. On first launch,
+MiniApps uses Russian for a Russian system locale and English otherwise.
+The preference is saved per installation. Stock templates switch languages
+when the launcher reloads and keep their interface folder and settings.
+
+Custom launcher interfaces can read `launcher.getLanguage()` and use
+`launcher.mountLanguageSettings(container)` to add the selector. Their own
+markup and translation dictionaries remain inside the interface package.
+Mini-apps receive the selected language on their next launch.
 
 ## Windows launcher controls
 
@@ -84,6 +97,12 @@ await launcher.setInterfaceSettings(settings); // JSON-compatible object
 ```
 
 ## Interface settings
+
+The launcher provides a separate **Settings** button with Telegram installation
+for themes without their own Telegram settings. To integrate the action into
+your own settings, call `launcher.hasTelegramClient()` and
+`launcher.installTelegram()`, and add `data-miniapps-telegram-settings` to
+the root `<html>` element.
 
 `launcher.getInterfaceSettings()` and `launcher.setInterfaceSettings(settings)` store settings for the active launcher interface on Android and Windows. Each interface owns `Interface/<active-interface-id>/settings.json`; the native host derives this path from the selected interface, so interface JavaScript cannot choose another destination.
 

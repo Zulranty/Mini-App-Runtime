@@ -12,9 +12,11 @@ import java.time.Instant
 object AppInfoService {
     private fun prefs(context: Context, id: String) = context.getSharedPreferences("app-info.$id", Context.MODE_PRIVATE)
 
-    fun recordInstall(context: Context, id: String) {
-        val now = Instant.now().toString(); val store = prefs(context, id)
-        store.edit().apply { if (!store.contains("installedAt")) putString("installedAt", now); putString("updatedAt", now) }.apply()
+    fun recordInstall(context: Context, id: String, timestamp: String) {
+        val store = prefs(context, id)
+        val edit = store.edit().putString("updatedAt", timestamp)
+        if (!store.contains("installedAt")) edit.putString("installedAt", timestamp)
+        check(edit.commit()) { "Could not write installation metadata" }
     }
     fun clear(context: Context, id: String) { prefs(context, id).edit().clear().apply() }
 

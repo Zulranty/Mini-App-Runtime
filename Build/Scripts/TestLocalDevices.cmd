@@ -7,7 +7,7 @@ echo Usage: TestLocalDevices.cmd Windows ^| Android
 exit /b 2
 :Windows
 rem First run BuildWindows.cmd: exercise its actual compiled production service.
-dotnet run --project "Build\Tests\LocalDevices\LocalDevices.csproj" -- "Cache\Windows\bin\Release\net8.0-windows10.0.18362.0\win-x64\MiniApps.dll"
+dotnet run --project "Build\Tests\LocalDevices\LocalDevices.csproj" -- "Cache\Windows\bin\Release\net10.0-windows10.0.18362.0\win-x64\MiniApps.dll"
 exit /b %errorlevel%
 :Android
 rem JVM tests compile the production Kotlin code but do not package or sign an APK.

@@ -1,15 +1,15 @@
 # Mini-app format
 
-Mini-app can be placed in `/storage/emulated/0/MiniApps` in several ways:
+On Android and Windows, the launcher imports ZIP archives and single HTML
+files. The file picker accepts those files. To use an unpacked app, place
+its folder directly in the runtime's `MiniApps` directory with the manifest
+at the folder root. The directory is `/storage/emulated/0/MiniApps` on
+Android and `MiniApps/` beside `MiniApps.exe` on Windows.
 
-- ZIP archive.
-- Ready folder.
-- A single HTML file with a built-in manifest.
-- A regular HTML file without manifest, with manual data entry via popup.
+## Folder and ZIP layout
 
-## Folder or ZIP
-
-The structure of a regular mini-app:
+An unpacked mini-app has this layout. When you create a ZIP, archive the
+contents so `manifest.json` is at the ZIP root.
 
 ```text
 example-mini-app/
@@ -48,6 +48,13 @@ permissions
 network
 ```
 
+Shared JavaScript libraries live separately in `MiniApps/Modules/<id>/index.js`.
+The `Modules` directory is reserved and is skipped by the app scanner.
+Apps opt in by calling `mini.modules.load(id)`. Declare `telegram.session`
+when an app offers shared Telegram sign-in. Optional integrations can wait
+until the user opens their Telegram settings or selects Sync.
+See [Shared modules and Telegram](telegram.md).
+
 Supported permissions:
 
 ```text
@@ -64,6 +71,7 @@ files.directory
 system.open
 haptics
 local.peers
+telegram.session
 ```
 
 The `icon` field can point to a PNG/JPG file inside the mini-app folder:
@@ -76,23 +84,22 @@ The `icon` field can point to a PNG/JPG file inside the mini-app folder:
 
 Paths must be relative, without `..`, without absolute paths and without going beyond the mini-app folder.
 
-## ZIP update logic
+## Importing and updating ZIP packages
 
-If `demo.zip` is found, it is installed to:
+The installer uses `manifest.id` to identify the app. For example, on a
+fresh installation a package whose ID is `com.example.demo` is installed
+under `MiniApps/com.example.demo/`, even if its ZIP is named `demo.zip`.
 
-```text
-MiniApps/demo/
-```
+On update, the installer finds the existing folder by manifest ID and keeps
+that folder. It accepts the same or a newer SemVer version and preserves
+`storage.json` and `storage.json.bak`. An older or invalid package leaves the
+installed app in place. Close any open windows of the app before updating it
+on Windows.
 
-After successful installation, the original ZIP is not saved: the application is deployed in its own folder. When sent, the launcher creates a new ZIP from the application files, excluding user data.
-
-If the `demo/` folder already exists, the launcher reads manifest from the folder and from the ZIP:
-
-- if `id` matches and the version in ZIP is newer, the folder is updated;
-- if the version is the same or older, the installed application and the saved source do not change;
-- if the ZIP is broken or the manifest is invalid, the ZIP remains in place.
-
-When updating, the public `storage.json` is saved.
+The picker leaves the selected ZIP at its original location. If you place
+the ZIP directly in `MiniApps` and scan that directory, the host removes the
+ZIP after a successful import. Sharing creates a new package from the
+installed app's code and excludes user data.
 
 ## Single-file HTML
 
@@ -113,19 +120,56 @@ One HTML file can contain manifest within itself:
 
 `entry` can be omitted. During installation, runtime will name the HTML file based on the `name` field of the manifest: for example, `HSV Editor.html`, and write this name to `entry`. Invalid characters for the file name are replaced with `_`.
 
-For example `hsv-editor.html` will be set as:
+For example, the HTML above is installed as:
 
 ```text
-MiniApps/hsv-editor/
+MiniApps/com.example.hsv/
 ├── manifest.json
 └── HSV Editor.html
 ```
 
+## Localized mini-app packages
+
+Keep translations and localized pages inside the mini-app ZIP. All languages
+share the same app ID, permissions, version, storage and Telegram connection.
+A package can have one or several localized HTML entry points:
+
+```json
+{
+  "id": "com.example.notes",
+  "name": "Notes",
+  "version": "1.0.0",
+  "sdkVersion": 2,
+  "entry": "index.html",
+  "defaultLanguage": "en",
+  "locales": {
+    "en": { "entry": "index.html" },
+    "ru": { "entry": "ru/index.html", "name": "Заметки" }
+  }
+}
+```
+
+The runtime chooses an exact tag match, then removes trailing subtags until
+it finds a match. If none exists, it uses `defaultLanguage`. The default
+language must be declared and its entry must match the top-level `entry`.
+Localized entries must be existing `.html` files inside the package with
+ASCII letters, digits, hyphens, underscores, dots and slashes in their paths.
+Up to 32 entries are supported. Locale tags use letters and digits separated
+by hyphens and are matched case-insensitively. `name` and `description` are
+optional per locale. Packages without localization metadata still use their
+original entry. A single HTML app can use `mini.locale.get()` to select its
+own embedded translations.
+
+Set `lang` on each localized HTML page. Keep translated UI text separate from
+user content and use shared scripts and styles where possible. Build every
+language into the same ZIP so switching works offline. Importing that ZIP
+over an earlier language-specific package with the same ID preserves its data.
+
 ## HTML without manifest
 
-If the launcher finds `.html` without embedded manifest, it shows the “Unclear HTML” popup.
+When importing an HTML file without an embedded manifest, the launcher can ask you to supply its metadata.
 
-In popup you can enter:
+The dialog accepts these fields:
 
 - App ID
 - Name
@@ -137,12 +181,12 @@ In popup you can enter:
 After confirmation, the file is installed as a regular mini-app:
 
 ```text
-MiniApps/<html-file-name>/
+MiniApps/<app-id>/
 ├── manifest.json
 └── <application name>.html
 ```
 
-Popup validates `id`, required fields and permissions before installation.
+The dialog validates the app ID, required fields and permissions before installation.
 
 ## Storage
 

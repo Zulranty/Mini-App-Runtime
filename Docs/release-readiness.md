@@ -1,6 +1,24 @@
-# Release readiness review — 2026-09-27
+# Release checklist
 
-## Verified in this review
+## Before distribution
+
+1. On Windows, build with `Build\Scripts\BuildWindows.cmd`. Verify setup on a
+   machine with x64 .NET 10 Desktop Runtime and WebView2. Test both a clean
+   installation and an update over existing packages, permissions and data.
+   See [Windows distribution](windows-distribution.md).
+2. For Android, use the permanent distribution key described in
+   [Requirements](README.md#requirements). Build a signed APK with
+   `Build\Scripts\BuildAndroid.cmd`, or a signed AAB with
+   `Build\Scripts\BuildAndroid.cmd Bundle` for Google Play. Verify that the
+   release can update the intended installed version. An AAB build alone
+   does not establish Play approval for shared-folder access.
+3. On supported devices, test package import, updates, data preservation,
+   permission prompts, browser origin isolation, file access, and controlled
+   network requests. Include rollback on Windows.
+
+## Historical verification — 2026-09-27
+
+These results apply to the September 2026 snapshot.
 
 - `BuildWindows.cmd` compiled the Release host and produced `MiniAppsSetup.exe`.
   The installer staging directory contained only the executable, runtime files,
@@ -15,21 +33,9 @@
   Windows publish preserves installed content and restores staged user data after
   an interrupted publish.
 
-## Required before distribution
-
-1. Create and securely back up a permanent Android signing keystore. Supply the
-   four `MINIAPPS_ANDROID_*` variables documented in [README](README.md), run
-   `BuildAndroid.cmd`, and verify the certificate and update compatibility. A
-   temporary or debug key is not suitable for release.
-2. Perform device-level tests on supported Android versions and Windows with
-   WebView2: install, upgrade, rollback, permissions, WebView navigation/frame
-   isolation, file and network APIs, and preservation of data across an
-   installer update. Compilation and packaging do not establish these behaviors.
-3. Harden controlled network connections against DNS rebinding. Windows checks
-   private IP literals but currently does not pin a vetted DNS result. Android
-   resolves a hostname for the local-address check and may resolve it again for
-   the actual connection. A hostname that changes to a private address between
-   those steps can evade `allowLocalNetwork: false`.
+The controlled Android and Windows clients now use the validated addresses
+directly for each new connection. The TLS certificate is still checked
+against the original HTTPS hostname.
 
 The browser's own `fetch` is intentionally outside the controlled network API
 and its manifest allowlist. Treat the `network` permission as permission for

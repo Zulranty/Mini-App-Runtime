@@ -1,7 +1,7 @@
 {
   "id": "ru.htmlframework.worktime",
   "name": "Worktime Tracker",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "sdkVersion": 1,
   "description": "Track work sessions, daily rates, and earnings with precise recalculation",
   "author": "HTML Framework",
@@ -10,5 +10,16 @@
     "files.pick",
     "clipboard.write"
   ],
-  "entry": "Worktime Tracker.html"
+  "entry": "index.html",
+  "defaultLanguage": "en",
+  "locales": {
+    "en": {
+      "entry": "index.html"
+    },
+    "ru": {
+      "entry": "index.ru.html",
+      "name": "Трекер рабочего времени",
+      "description": "Учёт рабочих сессий, ставок по дням и заработка с точным пересчётом"
+    }
+  }
 }

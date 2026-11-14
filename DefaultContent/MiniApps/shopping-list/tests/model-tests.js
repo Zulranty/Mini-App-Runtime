@@ -14,24 +14,24 @@ test('default state is valid', () => {
   assert.equal(state.schemaVersion, 2);
 });
 
-test('migrates v1 order and settings', () => {
-  const state = M.migrateState({
-    schemaVersion: 1,
+test('normalization preserves the saved category order and settings', () => {
+  const state = M.normalizeState({
+    schemaVersion: 2,
     categories: [
-      { id: 'b', name: 'B', color: '#112233', order: 1 },
-      { id: 'a', name: 'A', color: '#445566', order: 0 }
+      { id: 'b', name: 'B', color: '#112233' },
+      { id: 'a', name: 'A', color: '#445566' }
     ],
     products: [{ id: 'p', name: 'P', categoryId: 'b', selected: true, bought: true }],
-    settings: { checkboxSide: 'left', theme: 'light' }
+    settings: { checkboxesRight: false, theme: 'light' }
   });
-  assert.deepEqual(state.categories.map(x => x.id), ['a', 'b']);
+  assert.deepEqual(state.categories.map(x => x.id), ['b', 'a']);
   assert.equal(state.settings.checkboxesRight, false);
   assert.equal(state.settings.theme, 'light');
   assert.equal(state.products[0].bought, true);
 });
 
 test('recovers orphaned products', () => {
-  const state = M.migrateState({ categories: [], products: [{ id: 'p', name: 'Product', categoryId: 'missing' }] });
+  const state = M.normalizeState({ categories: [], products: [{ id: 'p', name: 'Product', categoryId: 'missing' }] });
   assert.equal(state.categories.length, 1);
   assert.equal(state.products[0].categoryId, state.categories[0].id);
   assert.deepEqual(M.validateState(state), []);

@@ -1,7 +1,7 @@
 {
   "id": "com.openai.minipaint",
   "name": "Mini Paint",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "sdkVersion": 2,
   "minRuntimeVersion": "1.4.0",
   "entry": "index.html",
@@ -11,5 +11,16 @@
     "storage",
     "files.pick",
     "files.save"
-  ]
+  ],
+  "defaultLanguage": "en",
+  "locales": {
+    "en": {
+      "entry": "index.html"
+    },
+    "ru": {
+      "entry": "index.ru.html",
+      "name": "Mini Paint",
+      "description": "Редактор изображений и рисования в стиле Paint"
+    }
+  }
 }

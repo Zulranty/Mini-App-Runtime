@@ -23,9 +23,8 @@ UninstallFilesDir={app}\Data
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "MiniApps\*,Interface\*"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Update built-in mini-app code on every framework install, but never replace
-; user data, runtime state, or unrelated user apps.
-Source: "{#SourceDir}\MiniApps\*"; DestDir: "{app}\MiniApps"; Excludes: "MiniApps\.runtime\*;MiniApps\*\storage.json;MiniApps\*\storage.json.bak"; Flags: ignoreversion recursesubdirs createallsubdirs
+; The host installs Data\BundledMiniApps through its package transaction.
+Source: "{#SourceDir}\MiniApps\Modules\*"; DestDir: "{app}\MiniApps\Modules"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "{#SourceDir}\Interface\*"; DestDir: "{app}\Interface"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
@@ -35,17 +34,29 @@ Name: "{autostartmenu}\{#ProductName}"; Filename: "{app}\MiniApps.exe"
 Filename: "{app}\MiniApps.exe"; Description: "Запустить {#ProductName}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+function GetBinaryType(const ApplicationName: String; var BinaryType: Cardinal): Boolean;
+  external 'GetBinaryTypeW@kernel32.dll stdcall';
+
 function RuntimeAt(const DotnetRoot: String): Boolean;
 var
   FindRec: TFindRec;
-  Version, Major: String;
+  DesktopRoot, Version: String;
+  BinaryType: Cardinal;
 begin
   Result := False;
-  if (DotnetRoot = '') or not FindFirst(AddBackslash(DotnetRoot) + 'shared\Microsoft.WindowsDesktop.App\*', FindRec) then exit;
+  if DotnetRoot = '' then exit;
+  { The x64 registration points to the host used by the application.
+    Do not infer an x64 host from a dotnet on PATH or a runtime folder name. }
+  if not GetBinaryType(AddBackslash(DotnetRoot) + 'dotnet.exe', BinaryType) then exit;
+  if BinaryType <> 6 then exit; { SCS_64BIT_BINARY }
+  DesktopRoot := AddBackslash(DotnetRoot) + 'shared\Microsoft.WindowsDesktop.App\';
+  if not FindFirst(DesktopRoot + '10.0.*', FindRec) then exit;
   repeat
     Version := FindRec.Name;
-    Major := Copy(Version, 1, Pos('.', Version) - 1);
-    if StrToIntDef(Major, 0) >= 8 then begin
+    if (Pos('-', Version) = 0) and
+       FileExists(DesktopRoot + Version + '\System.Windows.Forms.dll') and
+       FileExists(AddBackslash(DotnetRoot) + 'shared\Microsoft.NETCore.App\' + Version + '\coreclr.dll') then
+    begin
       Result := True;
       break;
     end;
@@ -53,62 +64,50 @@ begin
   FindClose(FindRec);
 end;
 
-function RuntimeLineCompatible(const Line: String): Boolean;
+function RuntimeVersionInstalled(): Boolean;
 var
-  Version, Major: String;
+  RuntimeRoot: String;
 begin
-  Result := False;
-  if Pos('Microsoft.WindowsDesktop.App ', Line) <> 1 then exit;
-  Version := Copy(Line, Length('Microsoft.WindowsDesktop.App ') + 1, MaxInt);
-  Major := Copy(Version, 1, Pos('.', Version) - 1);
-  Result := StrToIntDef(Major, 0) >= 8;
-end;
-
-function RuntimeListedByDotnet(): Boolean;
-var
-  OutputFile: String;
-  ExitCode, Index: Integer;
-  Lines: TArrayOfString;
-begin
-  Result := False;
-  OutputFile := ExpandConstant('{tmp}\miniapp-dotnet-runtimes.txt');
-  if Exec(ExpandConstant('{cmd}'), '/C dotnet --list-runtimes > "' + OutputFile + '" 2>NUL', '', SW_HIDE, ewWaitUntilTerminated, ExitCode) and
-     (ExitCode = 0) and LoadStringsFromFile(OutputFile, Lines) then begin
-    for Index := 0 to GetArrayLength(Lines) - 1 do
-      if RuntimeLineCompatible(Lines[Index]) then begin Result := True; break; end;
+  RuntimeRoot := GetEnv('DOTNET_ROOT_X64');
+  if RuntimeRoot = '' then RuntimeRoot := GetEnv('DOTNET_ROOT');
+  if RuntimeRoot <> '' then begin
+    Result := RuntimeAt(RuntimeRoot);
+    exit;
   end;
-  DeleteFile(OutputFile);
+  if RegQueryStringValue(HKLM64, 'SOFTWARE\dotnet\Setup\InstalledVersions\x64',
+      'InstallLocation', RuntimeRoot) then
+    Result := RuntimeAt(RuntimeRoot)
+  else
+    Result := RuntimeAt(ExpandConstant('{commonpf64}\dotnet'));
 end;
 
-function RuntimeInRegistry(): Boolean;
+function WebView2At(RootKey: Integer): Boolean;
 var
   Version: String;
 begin
-  Result := RegQueryStringValue(HKLM64, 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App', 'Version', Version) and
-    (StrToIntDef(Copy(Version, 1, Pos('.', Version) - 1), 0) >= 8);
-  if not Result then
-    Result := RegQueryStringValue(HKCU64, 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App', 'Version', Version) and
-      (StrToIntDef(Copy(Version, 1, Pos('.', Version) - 1), 0) >= 8);
-end;
-
-function RuntimeVersionInstalled(): Boolean;
-begin
-  Result := RuntimeAt(ExpandConstant('{autopf}\dotnet')) or
-    RuntimeAt(ExpandConstant('{localappdata}\Microsoft\dotnet')) or
-    RuntimeAt(GetEnv('DOTNET_ROOT')) or
-    RuntimeListedByDotnet() or
-    RuntimeInRegistry();
+  Result := RegQueryStringValue(RootKey,
+    'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+    'pv', Version) and (Version <> '') and (Version <> '0.0.0.0');
 end;
 
 function InitializeSetup(): Boolean;
 var
   ResultCode: Integer;
 begin
-  Result := RuntimeVersionInstalled();
-  if Result then exit;
-  if MsgBox('Для работы требуется .NET 8 Desktop Runtime (x64) или новее. Открыть страницу загрузки?', mbError, MB_YESNO) = IDYES then
-    ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet/8.0/runtime', '', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
-  MsgBox('Установите .NET Desktop Runtime x64 и снова запустите установщик.', mbInformation, MB_OK);
+  Result := False;
+  if not RuntimeVersionInstalled() then begin
+    if WizardSilent then exit;
+    if MsgBox('Требуется .NET 10 Desktop Runtime (x64). Открыть страницу загрузки?', mbError, MB_YESNO) = IDYES then
+      ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet/10.0', '', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
+    exit;
+  end;
+  if not (WebView2At(HKLM32) or WebView2At(HKCU)) then begin
+    if WizardSilent then exit;
+    if MsgBox('Требуется Microsoft Edge WebView2 Runtime. Открыть страницу загрузки?', mbError, MB_YESNO) = IDYES then
+      ShellExec('open', 'https://developer.microsoft.com/microsoft-edge/webview2/', '', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
+    exit;
+  end;
+  Result := True;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;

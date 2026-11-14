@@ -9,3 +9,4 @@ Output/
 # Local IDE files
 .idea/
 *.iml
+/Build/Telegram/api-credentials.local.json

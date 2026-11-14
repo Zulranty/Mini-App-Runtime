@@ -14,10 +14,25 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
-        MiniStore.InitializeDataLayout();
-        NativeLibrary.SetDllImportResolver(typeof(CoreWebView2Environment).Assembly, ResolveWebView2Loader);
         ApplicationConfiguration.Initialize();
-        Application.Run(new LauncherForm());
+        using var instance = new Mutex(initiallyOwned: false,
+            "Local\\MiniApps-" + MiniStore.IdKey(Path.GetFullPath(AppContext.BaseDirectory).ToUpperInvariant()));
+        // Restart can create the successor before the old launcher exits.
+        try { if (!instance.WaitOne(TimeSpan.FromSeconds(2))) return; }
+        catch (AbandonedMutexException) { }
+        try
+        {
+            try { MiniStore.InitializeDataLayout(); }
+            catch (Exception error)
+            {
+                MessageBox.Show($"Could not recover installed mini-apps.\n\n{error.Message}", "Mini App Runtime",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            NativeLibrary.SetDllImportResolver(typeof(CoreWebView2Environment).Assembly, ResolveWebView2Loader);
+            Application.Run(new LauncherForm());
+        }
+        finally { instance.ReleaseMutex(); }
     }
 
     private static IntPtr ResolveWebView2Loader(string libraryName, Assembly assembly, DllImportSearchPath? searchPath) =>
@@ -29,17 +44,32 @@ internal static class Program
 internal sealed record NetworkPolicy(IReadOnlySet<string> Allow, bool AllowSubdomains, bool AllowHttp, bool AllowLocalNetwork, IReadOnlySet<string>? DiscoveryServices = null);
 internal sealed record MiniManifest(string Id, string Name, string Version, int SdkVersion, string Entry, HashSet<string> Permissions, string? MinRuntimeVersion, NetworkPolicy? Network)
 {
+    public string? DefaultLanguage { get; init; }
+    public IReadOnlyDictionary<string, LocalizedEntry> Locales { get; init; } = new Dictionary<string, LocalizedEntry>();
+    public string? Language { get; init; }
+    public string? LocalizedDescription => Language is not null ? Locales[Language].Description : null;
+
+    public MiniManifest Localize(string preference)
+    {
+        if (DefaultLanguage is null) return this;
+        var language = AppLanguage.Match(preference, Locales.Keys, DefaultLanguage);
+        var locale = Locales[language];
+        return this with { Entry = locale.Entry, Name = locale.Name ?? Name, Language = language };
+    }
+
     public static MiniManifest Parse(string json)
     {
         var node = JsonNode.Parse(json)?.AsObject() ?? throw new InvalidDataException("Invalid manifest.json");
         var id = node["id"]?.GetValue<string>() ?? throw new InvalidDataException("Manifest id is required");
+        if (!ValidId(id))
+            throw new ApiError("source_file_invalid", "Invalid app ID");
         var name = node["name"]?.GetValue<string>() ?? id;
         var version = node["version"]?.GetValue<string>() ?? "0.0.0";
         if (!SemanticVersion.IsValid(version)) throw new ApiError("source_file_invalid", "version must be SemVer");
         var entry = node["entry"]?.GetValue<string>() ?? "index.html";
         if (!SafeRelativePath(entry)) throw new InvalidDataException("Unsafe entry path");
         var permissions = node["permissions"]?.AsArray().Select(x => x?.GetValue<string>() ?? "").Where(x => x.Length > 0).ToHashSet() ?? [];
-        var allowedPermissions = new HashSet<string> { "storage", "clipboard.write", "clipboard.read", "files.pick", "files.save", "files.directory", "share", "secureStorage", "network", "notifications", "system.open", "haptics", "local.peers" };
+        var allowedPermissions = new HashSet<string> { "storage", "clipboard.write", "clipboard.read", "files.pick", "files.save", "files.directory", "share", "secureStorage", "network", "notifications", "system.open", "haptics", "local.peers", "telegram.session" };
         if (!permissions.IsSubsetOf(allowedPermissions)) throw new InvalidDataException("Unknown permission");
         var sdkVersion = node["sdkVersion"]?.GetValue<int>() ?? 1;
         if (sdkVersion is < 1 or > 2) throw new ApiError("unsupported_sdk_version", "Unsupported SDK version");
@@ -57,8 +87,15 @@ internal sealed record MiniManifest(string Id, string Name, string Version, int 
                 throw new ApiError("source_file_invalid", "Invalid network configuration");
             network = new NetworkPolicy(allow, config["allowSubdomains"]?.GetValue<bool>() == true, allowHttp, allowLocal, services);
         }
-        return new(id, name, version, sdkVersion, entry, permissions, minRuntimeVersion, network);
+        var defaultLanguage = node["defaultLanguage"]?.GetValue<string>();
+        var locales = AppLanguage.ReadEntries(node["locales"], defaultLanguage);
+        if (locales.Count > 0 && locales[AppLanguage.Normalize(defaultLanguage)!].Entry != entry)
+            throw new ApiError("source_file_invalid", "The default language must use the main entry");
+        return new(id, name, version, sdkVersion, entry, permissions, minRuntimeVersion, network)
+        { DefaultLanguage = AppLanguage.Normalize(defaultLanguage), Locales = locales };
     }
+
+    internal static bool ValidId(string id) => Regex.IsMatch(id, @"\A[A-Za-z0-9._-]+\z") && id is not ("." or "..");
 
     public static bool SafeRelativePath(string path) => !string.IsNullOrWhiteSpace(path) && !Path.IsPathRooted(path) && !path.Split('/', '\\').Any(x => x is "." or ".." or "");
 
@@ -72,18 +109,45 @@ internal sealed record MiniManifest(string Id, string Name, string Version, int 
 
 internal static class SemanticVersion
 {
-    private static readonly Regex Pattern = new("^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$");
-    public static bool IsValid(string value) => Pattern.IsMatch(value);
+    private static readonly Regex Pattern = new(@"\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\z");
+
+    public static bool IsValid(string value)
+    {
+        var match = Pattern.Match(value);
+        return match.Success && !match.Groups[4].Value.Split('.').Any(
+            part => part.Length > 1 && part[0] == '0' && Numeric(part));
+    }
+
     public static int Compare(string left, string right)
     {
-        var a = left.Split('+')[0].Split('-', 2); var b = right.Split('+')[0].Split('-', 2);
-        var av = a[0].Split('.').Select(int.Parse).ToArray(); var bv = b[0].Split('.').Select(int.Parse).ToArray();
-        for (var i = 0; i < 3; i++) { var c = av[i].CompareTo(bv[i]); if (c != 0) return c; }
-        if (a.Length == b.Length) return 0; return a.Length == 1 ? 1 : -1;
+        var a = left.Split('+')[0].Split('-', 2);
+        var b = right.Split('+')[0].Split('-', 2);
+        var core = CompareParts(a[0], b[0]);
+        if (core != 0) return core;
+        if (a.Length != b.Length) return b.Length.CompareTo(a.Length);
+        return a.Length == 1 ? 0 : CompareParts(a[1], b[1]);
+    }
+
+    private static bool Numeric(string value) => value.All(c => c is >= '0' and <= '9');
+
+    private static int CompareParts(string left, string right)
+    {
+        var a = left.Split('.');
+        var b = right.Split('.');
+        for (var i = 0; i < Math.Min(a.Length, b.Length); i++)
+        {
+            var aNumeric = Numeric(a[i]);
+            var bNumeric = Numeric(b[i]);
+            if (aNumeric != bNumeric) return aNumeric ? -1 : 1;
+            var order = aNumeric ? a[i].Length.CompareTo(b[i].Length) : 0;
+            if (order == 0) order = string.CompareOrdinal(a[i], b[i]);
+            if (order != 0) return order;
+        }
+        return a.Length.CompareTo(b.Length);
     }
 }
 
-internal static class MiniStore
+internal static partial class MiniStore
 {
     // All application state stays inside the selected application directory.
     // This keeps the installed and portable layouts identical and makes the
@@ -93,6 +157,9 @@ internal static class MiniStore
     public static readonly string ConfigRoot = Path.Combine(AppContext.BaseDirectory, "Config");
     public static readonly string WebViewRoot = Path.Combine(ResourceRoot, "WebView2");
     public static readonly string Root = Path.Combine(AppContext.BaseDirectory, "MiniApps");
+    internal const string ModulesFolder = "Modules";
+    internal static string IdKey(string id) => Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(id))).ToLowerInvariant();
     public static readonly string RuntimeStateRoot = Path.Combine(Root, ".runtime");
     public static readonly string InterfaceRoot = Path.Combine(AppContext.BaseDirectory, "Interface");
     private static readonly string InterfaceSelectionPath = Path.Combine(ConfigRoot, "launcher-interface.txt");
@@ -106,7 +173,7 @@ internal static class MiniStore
     });
     private static readonly Regex EmbeddedManifest = new("<script\\s+type=[\"']application/miniapp\\+json[\"'][^>]*>(.*?)</script>", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
 
-    private static readonly object InstallLock = new();
+    internal static readonly object InstallLock = new();
     internal sealed record InstallResult(MiniManifest Manifest, bool Installed, string Directory);
     internal sealed record SyncResult(int Updated, IReadOnlyList<string> Errors)
     {
@@ -137,6 +204,11 @@ internal static class MiniStore
 
     public static InstallResult Import(string source) { lock (InstallLock) return InstallLocked(source, null, false, allowSameVersion: true); }
     public static InstallResult Import(string source, MiniManifest manifest) { lock (InstallLock) return InstallLocked(source, manifest, false, allowSameVersion: true); }
+    internal static InstallResult ImportBundledTelegram(string source)
+    {
+        lock (InstallLock) return InstallLocked(source, null, false, allowSameVersion: true, trustedProvider: true);
+    }
+
     public static bool HasEmbeddedManifest(string source) => EmbeddedManifest.IsMatch(File.ReadAllText(source));
 
     public static Task<CoreWebView2Environment> GetWebViewEnvironmentAsync() => WebViewEnvironment.Value;
@@ -145,6 +217,8 @@ internal static class MiniStore
     {
         Directory.CreateDirectory(ConfigRoot);
         Directory.CreateDirectory(Path.Combine(ConfigRoot, "Permissions"));
+        RecoverPackageTransactions();
+        ApplyBundledPackages();
     }
 
     public static void EnsureInterface()
@@ -271,11 +345,13 @@ internal static class MiniStore
             // They are never installed mini-apps and must not become an update
             // target while InstallLocked is preparing a package.
             .Where(d => !Path.GetFileName(d).StartsWith(".", StringComparison.Ordinal))
+            .Where(d => !string.Equals(Path.GetFileName(d), ModulesFolder, StringComparison.OrdinalIgnoreCase))
             .Select(d => TryRead(Path.Combine(d, "manifest.json")) is { } m ? ((MiniManifest Manifest, string Directory)?)(m, d!) : null)
             .Where(x => x.HasValue).Select(x => x!.Value).OrderBy(x => x.Manifest.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
 
-    private static InstallResult InstallLocked(string source, MiniManifest? manual, bool deleteRootSource, bool allowSameVersion)
+    private static InstallResult InstallLocked(string source, MiniManifest? manual, bool deleteRootSource, bool allowSameVersion, bool bundled = false, bool trustedProvider = false)
     {
+        RecoverPackageTransactions();
         if (!File.Exists(source)) throw new ApiError("source_file_not_found", "Source file was not found");
         var extension = Path.GetExtension(source).ToLowerInvariant();
         if (extension is not (".zip" or ".html" or ".htm")) throw new ApiError("source_file_invalid", "Only ZIP and HTML files are supported");
@@ -310,96 +386,144 @@ internal static class MiniStore
                     node = JsonNode.Parse(match.Groups[1].Value)?.AsObject() ?? throw new ApiError("source_file_invalid", "Invalid embedded manifest");
                 }
                 else node = new JsonObject { ["id"] = manual.Id, ["name"] = manual.Name, ["version"] = manual.Version, ["sdkVersion"] = manual.SdkVersion, ["permissions"] = new JsonArray(manual.Permissions.Order().Select(permission => (JsonNode)permission).ToArray()) };
+                if (node["locales"] is not null) throw new ApiError("source_file_invalid", "Localized entries require a ZIP package");
                 var entry = MiniManifest.HtmlEntryForName(node["name"]?.GetValue<string>() ?? "");
                 node["entry"] = entry;
                 incoming = MiniManifest.Parse(node.ToJsonString()); File.Copy(source, Path.Combine(temp, entry)); File.WriteAllText(Path.Combine(temp, "manifest.json"), node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
             }
-            if (!File.Exists(Path.Combine(temp, incoming.Entry))) throw new InvalidDataException("Entry file is missing");
-            var found = Apps().FirstOrDefault(x => x.Manifest.Id == incoming.Id); var target = found.Directory ?? Path.Combine(Root, FolderName(incoming.Id)); var existing = found.Manifest;
+            if (incoming.Id == TelegramSessionLease.ClientAppId && !bundled && !trustedProvider)
+                throw new ApiError("source_file_invalid", "Install the Telegram provider from the launcher");
+            if (!HasEntries(temp, incoming))
+                throw new ApiError("source_file_invalid", "App entry file is missing");
+            var bundledHash = bundled ? FileSha256(source) : null;
+            if (bundledHash is not null && BundledStampMatches(incoming.Id, bundledHash))
+                return new(incoming, false, "");
+            var found = Apps().FirstOrDefault(x => x.Manifest.Id == incoming.Id);
+            var target = found.Directory ?? Path.Combine(Root, FolderName(incoming.Id));
+            var existing = found.Manifest;
+            if (string.Equals(Path.GetFileName(target).TrimEnd('.'), ModulesFolder, StringComparison.OrdinalIgnoreCase))
+                throw new ApiError("source_file_invalid", "Modules is reserved for shared libraries");
             // Manual imports can deliberately reinstall a corrected package with
             // the same version. Files found in the root are handled the same way.
-            var versionComparison = existing is null ? 1 : CompareVersions(incoming.Version, existing.Version);
+            var versionComparison = existing is null ? 1 : SemanticVersion.Compare(incoming.Version, existing.Version);
             if (existing is not null && (versionComparison < 0 || (versionComparison == 0 && !allowSameVersion))) return new(existing, false, target);
-            var ready = Path.Combine(RuntimeStateRoot, "staging", $"{Path.GetFileName(target)}-{Guid.NewGuid():N}"); var backup = Path.Combine(RuntimeStateRoot, "staging", $"{Path.GetFileName(target)}-old-{Guid.NewGuid():N}");
-            Directory.CreateDirectory(Path.GetDirectoryName(ready)!); if (Directory.Exists(ready)) Directory.Delete(ready, true); if (Directory.Exists(backup)) Directory.Delete(backup, true);
-            Directory.Move(temp, ready);
-            try
-            {
-                if (Directory.Exists(target)) Directory.Move(target, backup); Directory.Move(ready, target);
-                var oldStorage = Path.Combine(backup, "storage.json"); if (File.Exists(oldStorage)) File.Copy(oldStorage, Path.Combine(target, "storage.json"), true);
-                var rollback=Path.Combine(RuntimeStateRoot,"rollback",incoming.Id); var rollbackApp=Path.Combine(rollback,"app");
-                if (Directory.Exists(rollback)) Directory.Delete(rollback,true); Directory.CreateDirectory(rollback);
-                if (Directory.Exists(backup)) Directory.Move(backup, rollbackApp);
-                if (Directory.Exists(rollbackApp)) File.WriteAllText(Path.Combine(rollback,"rollback.json"),new JsonObject { ["format"]="miniapps-rollback",["formatVersion"]=1,["appId"]=incoming.Id,["currentVersion"]=incoming.Version,["previousVersion"]=TryRead(Path.Combine(rollbackApp,"manifest.json"))?.Version,["createdAt"]=DateTimeOffset.UtcNow.ToString("O") }.ToJsonString());
-                if (deleteRootSource && Path.GetDirectoryName(source)?.TrimEnd(Path.DirectorySeparatorChar).Equals(Root, StringComparison.OrdinalIgnoreCase) == true) File.Delete(source);
-                var installedManifest = TryRead(Path.Combine(target, "manifest.json"));
-                if (installedManifest is null || installedManifest.Id != incoming.Id)
-                    throw new ApiError("install_failed", "The installed application directory could not be verified");
-                RecordAppInstall(incoming.Id);
-                return new(incoming, true, target);
-            }
-            catch
-            {
-                if (Directory.Exists(target) && Directory.Exists(backup)) Directory.Delete(target, true);
-                if (!Directory.Exists(target) && Directory.Exists(backup)) Directory.Move(backup, target);
-                throw;
-            }
+            if (existing is null && Directory.Exists(target))
+                throw new ApiError("install_failed", "Application folder is already in use");
+            EnsureAppClosed(incoming.Id);
+            var scannedSource = deleteRootSource ? source : null;
+            ReplaceAppCode(temp, target, incoming, existing, "install_failed", bundledHash, scannedSource);
+            return new(incoming, true, target);
         }
         finally { if (Directory.Exists(temp)) Directory.Delete(temp, true); }
     }
 
     private static MiniManifest? TryRead(string path) { try { return File.Exists(path) ? MiniManifest.Parse(File.ReadAllText(path)) : null; } catch { return null; } }
     private static string FolderName(string name) => Regex.Replace(name, "[^A-Za-z0-9._-]", "_").Trim('_') is { Length: > 0 } x ? x : "mini_app";
-    private static int CompareVersions(string a, string b)
-    {
-        var aa = a.Split('.', '-', '_'); var bb = b.Split('.', '-', '_');
-        for (var i = 0; i < Math.Max(aa.Length, bb.Length); i++)
-        {
-            var x = i < aa.Length ? aa[i] : ""; var y = i < bb.Length ? bb[i] : "";
-            var result = long.TryParse(x, out var xn) && long.TryParse(y, out var yn) ? xn.CompareTo(yn) : string.Compare(x, y, StringComparison.OrdinalIgnoreCase);
-            if (result != 0) return result;
-        }
-        return 0;
-    }
-
     public static (MiniManifest Manifest, string Directory) Find(string id) => Apps().FirstOrDefault(x => x.Manifest.Id == id).Manifest is { } manifest ? (manifest, Apps().First(x => x.Manifest.Id == id).Directory) : throw new ApiError("source_file_not_found", "Application was not found");
     public static JsonObject AppInfo(MiniManifest manifest, string directory)
     {
         var result = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "manifest.json")))?.AsObject() ?? new JsonObject();
+        result["name"] = manifest.Name;
+        result["entry"] = manifest.Entry;
+        if (manifest.LocalizedDescription is { } description) result["description"] = description;
         var metadata = AppInfoMetadata(manifest.Id); var fallback = new DateTimeOffset(Directory.GetLastWriteTimeUtc(directory)).ToString("O");
         var installedAt = metadata["installedAt"]?.GetValue<string>() ?? fallback; var updatedAt = metadata["updatedAt"]?.GetValue<string>() ?? installedAt;
-        var publicData = FileSize(Path.Combine(directory, "storage.json")) + FileSize(Path.Combine(directory, "storage.json.bak")); var privateData = FileSize(Path.Combine(PrivateRoot, manifest.Id + ".json")); var secureData = SecureStorageStore.SizeFor(manifest.Id);
+        var publicData = FileSize(Path.Combine(directory, "storage.json")) + FileSize(Path.Combine(directory, "storage.json.bak")); var privateData = PrivateStorageSize(manifest.Id); var secureData = SecureStorageStore.SizeFor(manifest.Id);
         result["installedAt"] = installedAt; result["updatedAt"] = updatedAt; result["appSizeBytes"] = DirectorySize(directory, file => Path.GetFileName(file) is not ("storage.json" or "storage.json.bak")); result["dataSizeBytes"] = publicData + privateData + secureData; result["publicDataSizeBytes"] = publicData; result["privateDataSizeBytes"] = privateData; result["secureDataSizeBytes"] = secureData;
         return result;
     }
     private static string AppInfoPath(string id) => Path.Combine(RuntimeStateRoot, "app-info", FolderName(id) + ".json");
     private static JsonObject AppInfoMetadata(string id) { try { return JsonNode.Parse(File.ReadAllText(AppInfoPath(id)))?.AsObject() ?? new JsonObject(); } catch { return new JsonObject(); } }
-    private static void RecordAppInstall(string id) { var path=AppInfoPath(id); Directory.CreateDirectory(Path.GetDirectoryName(path)!); var data=AppInfoMetadata(id); var now=DateTimeOffset.UtcNow.ToString("O"); data["installedAt"] ??= now; data["updatedAt"]=now; File.WriteAllText(path,data.ToJsonString()); }
+    private static void RecordAppInstall(string id, string timestamp)
+    {
+        var path = AppInfoPath(id);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var data = AppInfoMetadata(id);
+        data["installedAt"] ??= timestamp;
+        data["updatedAt"] = timestamp;
+        WriteDurableJson(path, data.ToJsonString());
+    }
     private static long FileSize(string path) => File.Exists(path) ? new FileInfo(path).Length : 0L;
     private static long DirectorySize(string path, Func<string, bool>? include = null) => Directory.Exists(path) ? Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories).Where(file => include?.Invoke(file) != false).Sum(FileSize) : 0L;
     public static JsonObject RollbackInfo(string id)
     {
-        var metadata=Path.Combine(RuntimeStateRoot,"rollback",id,"rollback.json");
-        if (!File.Exists(metadata)) return new JsonObject { ["available"] = false };
-        try { var result=JsonNode.Parse(File.ReadAllText(metadata))?.AsObject() ?? throw new InvalidDataException(); result["available"]=true; return result; } catch { return new JsonObject { ["available"] = false }; }
+        lock (InstallLock) return ReadRollbackInfo(id);
     }
-    public static void DeleteRollback(string id) { var path=Path.Combine(RuntimeStateRoot,"rollback",id); if(Directory.Exists(path))Directory.Delete(path,true); }
-    public static void Rollback(string id)
+
+    private static JsonObject ReadRollbackInfo(string id)
     {
-        lock(InstallLock)
+        if (Apps().All(app => app.Manifest.Id != id)) return new JsonObject { ["available"] = false };
+        var directory = RollbackPath(id);
+        var previous = Path.Combine(directory, "app");
+        var manifest = TryRead(Path.Combine(previous, "manifest.json"));
+        if (manifest is null || manifest.Id != id || !HasEntries(previous, manifest))
+            return new JsonObject { ["available"] = false };
+        try
         {
-            var current=Find(id); var slot=Path.Combine(RuntimeStateRoot,"rollback",id); var previous=Path.Combine(slot,"app");
-            var previousManifest=TryRead(Path.Combine(previous,"manifest.json"));
-            if(previousManifest is null) throw new ApiError("rollback_not_available","Rollback is not available");
-            if(previousManifest.Id!=id) throw new ApiError("rollback_failed","Rollback metadata is invalid");
-            var staging=Path.Combine(RuntimeStateRoot,"staging",$"rollback-{Guid.NewGuid():N}"); Directory.CreateDirectory(Path.GetDirectoryName(staging)!);
-            try { Directory.Move(current.Directory,staging); Directory.Move(previous,current.Directory); Directory.Move(staging,previous); File.WriteAllText(Path.Combine(slot,"rollback.json"),new JsonObject { ["format"]="miniapps-rollback",["formatVersion"]=1,["appId"]=id,["currentVersion"]=previousManifest.Version,["previousVersion"]=current.Manifest.Version,["createdAt"]=DateTimeOffset.UtcNow.ToString("O") }.ToJsonString()); }
-            catch(Exception e) { if(!Directory.Exists(current.Directory)&&Directory.Exists(staging))Directory.Move(staging,current.Directory); throw new ApiError("rollback_failed",e.Message); }
+            var info = JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "rollback.json"))) as JsonObject
+                ?? throw new InvalidDataException("Invalid rollback metadata");
+            info["available"] = true;
+            return info;
+        }
+        catch (Exception error) when (error is IOException or JsonException or InvalidOperationException)
+        {
+            return new JsonObject { ["available"] = false };
         }
     }
+    public static void DeleteRollback(string id)
+    {
+        if (!MiniManifest.ValidId(id)) throw new ApiError("invalid_params", "Invalid app ID");
+        lock (InstallLock)
+        {
+            RecoverPackageTransactions();
+            var path = RollbackPath(id);
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
+    }
+    public static void Rollback(string id)
+    {
+        lock (InstallLock)
+        {
+            EnsureAppClosed(id);
+            var current = Find(id);
+            var previous = Path.Combine(RollbackPath(id), "app");
+            var manifest = TryRead(Path.Combine(previous, "manifest.json"))
+                ?? throw new ApiError("rollback_not_available", "Rollback is not available");
+            if (manifest.Id != id || !HasEntries(previous, manifest))
+                throw new ApiError("rollback_failed", "The retained package is incomplete or has a different ID");
+            var ready = Path.Combine(RuntimeStateRoot, "staging", $"rollback-{Guid.NewGuid():N}");
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(previous, "*", SearchOption.AllDirectories))
+                {
+                    var destination = Path.Combine(ready, Path.GetRelativePath(previous, file));
+                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                    File.Copy(file, destination);
+                }
+                ReplaceAppCode(ready, current.Directory, manifest, current.Manifest, "rollback_failed");
+            }
+            finally { if (Directory.Exists(ready)) Directory.Delete(ready, true); }
+        }
+    }
+
     public static void Delete(string id)
     {
-        lock (InstallLock) { var app = Find(id); var failures = new List<string>(); try { Directory.Delete(app.Directory, true); } catch { failures.Add("application"); } try { DeleteRollback(id); File.Delete(AppInfoPath(id)); } catch { failures.Add("runtime state"); } try { File.Delete(Path.Combine(PrivateRoot, id + ".json")); PermissionStore.Delete(id, app.Manifest.Name); SecureStorageStore.Delete(id); } catch { failures.Add("private data"); } if (failures.Count > 0) throw new ApiError("app_delete_failed", "Could not delete: " + string.Join(", ", failures)); }
+        lock (InstallLock)
+        {
+            EnsureAppClosed(id);
+            var app = Find(id);
+            var legacyPrivateFile = LegacyPrivateFile(id);
+            var failures = new List<string>();
+            try { new PermissionStore(app.Manifest).Reset(); }
+            catch { failures.Add("permissions"); }
+            try { Directory.Delete(app.Directory, true); }
+            catch { failures.Add("application"); }
+            try { DeleteRollback(id); File.Delete(AppInfoPath(id)); }
+            catch { failures.Add("runtime state"); }
+            try { DeletePrivateStorage(id, legacyPrivateFile); SecureStorageStore.Delete(id); }
+            catch { failures.Add("private data"); }
+            if (failures.Count > 0) throw new ApiError("app_delete_failed", "Could not delete: " + string.Join(", ", failures));
+        }
     }
 }
 
@@ -474,7 +598,7 @@ internal sealed class LauncherForm : Form
         {
             MiniStore.EnsureInterface(); await web.EnsureCoreWebView2Async(await MiniStore.GetWebViewEnvironmentAsync());
             web.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-            web.CoreWebView2.SetVirtualHostNameToFolderMapping("launcher.local", MiniStore.ActiveLauncherInterfaceRoot, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.DenyCors);
+            MapLauncherInterface();
             await web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(await File.ReadAllTextAsync(Path.Combine(MiniStore.ResourceRoot, "launcher-runtime.js")));
             web.CoreWebView2.WebMessageReceived += (_, e) =>
             {
@@ -485,21 +609,77 @@ internal sealed class LauncherForm : Form
                     HandleRequest(e.TryGetWebMessageAsString());
             };
             // Launcher sharing is clipboard-based, so it works on every supported Windows version.
+            web.CoreWebView2.NavigationStarting += (_, e) => e.Cancel = !WebAppView.TrustedSource(e.Uri, "launcher.local");
+            web.CoreWebView2.FrameNavigationStarting += (_, e) => e.Cancel = true;
+            web.CoreWebView2.NewWindowRequested += (_, e) => e.Handled = true;
             web.CoreWebView2.Navigate("https://launcher.local/index.html");
+        }
+        catch (WebView2RuntimeNotFoundException)
+        {
+            MessageBox.Show(this, "Установите Microsoft Edge WebView2 Runtime и запустите MiniApps снова.", Text,
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         catch (Exception error) { MessageBox.Show(this, "Не удалось открыть интерфейс.\n\n" + error.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error); }
     }
+
+    private void MapLauncherInterface()
+    {
+        var root = MiniStore.ActiveLauncherInterfaceRoot;
+        var page = AppLanguage.StockLauncherPage(root, AppLanguage.Preference());
+        if (page is not null && File.Exists(page)) root = Path.GetDirectoryName(page)!;
+        web.CoreWebView2.ClearVirtualHostNameToFolderMapping("launcher.local");
+        web.CoreWebView2.SetVirtualHostNameToFolderMapping("launcher.local", root, CoreWebView2HostResourceAccessKind.DenyCors);
+    }
+
     private void HandleRequest(string raw)
     {
+        var id = "";
         try
         {
-            var request = JsonNode.Parse(raw)?.AsObject() ?? throw new InvalidDataException(); var id = request["id"]?.GetValue<string>() ?? ""; var method = request["method"]?.GetValue<string>() ?? "";
+            var request = JsonNode.Parse(raw)?.AsObject() ?? throw new InvalidDataException(); id = request["id"]?.GetValue<string>() ?? ""; var method = request["method"]?.GetValue<string>() ?? "";
             switch (method)
             {
-                case "apps.list": MiniStore.Sync(); Reply(id, true, new JsonArray(MiniStore.Apps().Select(x => (JsonNode)new JsonObject { ["id"] = x.Manifest.Id, ["name"] = x.Manifest.Name, ["version"] = x.Manifest.Version }).ToArray()), null, null); break;
-                case "apps.getAppInfo": { MiniStore.Sync(); var appInfo = FindApp(request); Reply(id, true, MiniStore.AppInfo(appInfo.Manifest, appInfo.Directory), null, null); break; }
-                case "apps.open": var app = FindApp(request); ShowApp(app.Manifest, app.Directory); Reply(id, true, null, null, null); break;
-                case "apps.openNewWindow": var newWindowApp = FindApp(request); OpenAdditionalWindow(newWindowApp.Manifest, newWindowApp.Directory); Reply(id, true, null, null, null); break;
+                case "apps.list":
+                {
+                    MiniStore.Sync();
+                    var language = AppLanguage.Preference();
+                    Reply(id, true, new JsonArray(MiniStore.Apps().Select(x => x.Manifest.Localize(language)).Select(app =>
+                        (JsonNode)new JsonObject { ["id"] = app.Id, ["name"] = app.Name, ["version"] = app.Version,
+                            ["description"] = app.LocalizedDescription }).ToArray()), null, null);
+                    break;
+                }
+                case "apps.getAppInfo":
+                {
+                    MiniStore.Sync();
+                    var appInfo = FindApp(request);
+                    var localized = appInfo.Manifest.Localize(AppLanguage.Preference());
+                    Reply(id, true, MiniStore.AppInfo(localized, appInfo.Directory), null, null);
+                    break;
+                }
+                case "apps.open":
+                case "apps.openNewWindow":
+                    var app = FindApp(request);
+                    if (app.Manifest.MinRuntimeVersion is { } minimum && SemanticVersion.Compare(WebAppView.RuntimeVersion, minimum) < 0)
+                        throw new ApiError("runtime_version_too_old", $"Mini-app requires runtime {minimum}");
+                    if (method == "apps.openNewWindow") OpenAdditionalWindow(app.Manifest, app.Directory);
+                    else ShowApp(app.Manifest, app.Directory);
+                    Reply(id, true, null, null, null);
+                    break;
+                case "telegram.installStatus": Reply(id, true, JsonValue.Create(TelegramPackage.HasClient()), null, null); break;
+                case "language.get": Reply(id, true, JsonValue.Create(AppLanguage.Preference()), null, null); break;
+                case "language.set": AppLanguage.Save(request["params"]?["language"]?.GetValue<string>()); MapLauncherInterface(); Reply(id, true, null, null, null); break;
+                case "telegram.install": _ = InstallTelegramAsync(id); break;
+                case "telegram.settings.get": Reply(id, true, TelegramSettings.Read(), null, null); break;
+                case "telegram.settings.set": Reply(id, true, TelegramSettings.Save(request["params"]), null, null); break;
+                case "telegram.log.read": Reply(id, true, RuntimeLog.ReadTelegram(), null, null); break;
+                case "telegram.log.copy":
+                {
+                    var log = RuntimeLog.ReadTelegram()["text"]!.GetValue<string>();
+                    if (log.Length == 0) throw new ApiError("log_empty", "No Telegram login events to copy");
+                    Clipboard.SetText(log);
+                    Reply(id, true, null, null, null);
+                    break;
+                }
                 case "apps.refresh": RunOperation(id, () => MiniStore.Sync().ToJson()); break;
                 case "apps.importApp": ImportApp(id); break;
                 case "apps.delete": RunOperation(id, () => { MiniStore.Delete(request["params"]?["id"]?.GetValue<string>() ?? throw new ApiError("invalid_params", "id is required")); return null; }); break;
@@ -508,20 +688,20 @@ internal sealed class LauncherForm : Form
                 case "apps.rollbackInfo": Reply(id,true,MiniStore.RollbackInfo(request["params"]?["id"]?.GetValue<string>() ?? throw new ApiError("invalid_params","id is required")),null,null); break;
                 case "apps.rollback": RunOperation(id,()=> { MiniStore.Rollback(request["params"]?["id"]?.GetValue<string>() ?? throw new ApiError("invalid_params","id is required")); return null; }); break;
                 case "apps.deleteRollback": RunOperation(id,()=> { MiniStore.DeleteRollback(request["params"]?["id"]?.GetValue<string>() ?? throw new ApiError("invalid_params","id is required")); return null; }); break;
-                case "apps.permissions.get": { var appPermissions=FindApp(request); var store=new PermissionStore(appPermissions.Manifest.Id, appPermissions.Manifest.Name); Reply(id,true,new JsonObject { ["id"]=appPermissions.Manifest.Id,["permissions"]=new JsonArray(appPermissions.Manifest.Permissions.Order().Select(permission=>(JsonNode)new JsonObject { ["permission"]=permission,["state"]=store.StateFor(permission) }).ToArray()) },null,null); break; }
-                case "apps.permissions.set": RunOperation(id,()=> { var appPermissions=FindApp(request); var permission=request["params"]?["permission"]?.GetValue<string>() ?? throw new ApiError("invalid_params","permission is required"); var state=request["params"]?["state"]?.GetValue<string>() ?? throw new ApiError("invalid_params","state is required"); if(!appPermissions.Manifest.Permissions.Contains(permission))throw new ApiError("permission_not_declared","Permission is not declared"); new PermissionStore(appPermissions.Manifest.Id, appPermissions.Manifest.Name).Set(permission,state); return null; }); break;
-                case "apps.permissions.reset": RunOperation(id,()=> { var appPermissions=FindApp(request); new PermissionStore(appPermissions.Manifest.Id, appPermissions.Manifest.Name).Reset(); return null; }); break;
-                case "apps.settings": Reply(id, true, new JsonObject { ["version"] = "1.0.0", ["platform"] = "Windows", ["appsPath"] = MiniStore.Root }, null, null); break;
+                case "apps.permissions.get": { var appPermissions=FindApp(request); var store=new PermissionStore(appPermissions.Manifest); Reply(id,true,new JsonObject { ["id"]=appPermissions.Manifest.Id,["permissions"]=new JsonArray(appPermissions.Manifest.Permissions.Order().Select(permission=>(JsonNode)new JsonObject { ["permission"]=permission,["state"]=store.StateFor(permission) }).ToArray()) },null,null); break; }
+                case "apps.permissions.set": RunOperation(id,()=> { var appPermissions=FindApp(request); var permission=request["params"]?["permission"]?.GetValue<string>() ?? throw new ApiError("invalid_params","permission is required"); var state=request["params"]?["state"]?.GetValue<string>() ?? throw new ApiError("invalid_params","state is required"); if(!appPermissions.Manifest.Permissions.Contains(permission))throw new ApiError("permission_not_declared","Permission is not declared"); new PermissionStore(appPermissions.Manifest).Set(permission,state); return null; }); break;
+                case "apps.permissions.reset": RunOperation(id,()=> { var appPermissions=FindApp(request); new PermissionStore(appPermissions.Manifest).Reset(); return null; }); break;
+                case "apps.settings": Reply(id, true, new JsonObject { ["version"] = Application.ProductVersion, ["platform"] = "Windows", ["appsPath"] = MiniStore.Root }, null, null); break;
                 case "interfaces.list": Reply(id, true, MiniStore.Interfaces(), null, null); break;
-                case "interfaces.select": { MiniStore.SelectInterface(request["params"]?["id"]?.GetValue<string>() ?? throw new ApiError("invalid_params", "id is required")); web.CoreWebView2.SetVirtualHostNameToFolderMapping("launcher.local", MiniStore.ActiveLauncherInterfaceRoot, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.DenyCors); Reply(id, true, null, null, null); break; }
+                case "interfaces.select": { MiniStore.SelectInterface(request["params"]?["id"]?.GetValue<string>() ?? throw new ApiError("invalid_params", "id is required")); MapLauncherInterface(); Reply(id, true, null, null, null); break; }
                 case "interfaces.import": ImportInterface(id); break;
                 case "interfaces.settings.get": Reply(id, true, MiniStore.GetInterfaceSettings(), null, null); break;
                 case "interfaces.settings.set": MiniStore.SetInterfaceSettings(request["params"]?["settings"]); Reply(id, true, null, null, null); break;
                 default: Reply(id, false, null, "method_not_found", "Unknown method"); break;
             }
         }
-        catch (ApiError error) { Reply("", false, null, error.Code, error.Message); }
-        catch (Exception error) { Reply("", false, null, "invalid_request", error.Message); }
+        catch (ApiError error) { Reply(id, false, null, error.Code, error.Message); }
+        catch (Exception error) { Reply(id, false, null, "invalid_request", error.Message); }
     }
     private void ImportApp(string id)
     {
@@ -562,6 +742,60 @@ internal sealed class LauncherForm : Form
         return new MiniManifest(id.Text.Trim(), name.Text.Trim(), version.Text.Trim(), 1, "index.html", declared, null, null);
     }
     private void ImportInterface(string id) { if (operation) { Reply(id, false, null, "operation_in_progress", "Another operation is running"); return; } using var dialog = new OpenFileDialog { Filter = "Interface|*.zip;*.html;*.htm|ZIP archive|*.zip|HTML file|*.html;*.htm" }; if (dialog.ShowDialog(this) != DialogResult.OK) { Reply(id, false, null, "source_file_not_found", "No file selected"); return; } RunOperation(id, () => { MiniStore.InstallInterface(dialog.FileName); return null; }); }
+    private async Task InstallTelegramAsync(string id)
+    {
+        if (operation)
+        {
+            Reply(id, false, null, "operation_in_progress", "Another operation is running");
+            return;
+        }
+        operation = true;
+        bool restart = false;
+        try
+        {
+            var updating = TelegramPackage.HasClient();
+            var title = updating ? "Обновление Telegram" : "Установка Telegram";
+            using (var dialog = new Form
+            {
+                Text = title,
+                ClientSize = new Size(340, 66),
+                Padding = new Padding(16, 20, 16, 20),
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                StartPosition = FormStartPosition.CenterParent,
+                ShowInTaskbar = false,
+                ControlBox = false
+            })
+            {
+                var bar = new ProgressBar { Dock = DockStyle.Fill, AccessibleName = title };
+                dialog.Controls.Add(bar);
+                var progress = new Progress<int>(percent => { if (!bar.IsDisposed) bar.Value = percent; });
+                dialog.Show(this);
+                Enabled = false;
+                try
+                {
+                    if (!await Task.Run(() => TelegramPackage.Install(progress)))
+                    {
+                        Reply(id, true, new JsonObject { ["message"] = "Установлена более новая версия Telegram" }, null, null);
+                        return;
+                    }
+                }
+                finally { if (!IsDisposed) Enabled = true; }
+            }
+            if (IsDisposed) return;
+            var message = updating ? "Telegram обновлён" : "Telegram установлен";
+            restart = MessageBox.Show(this, "Перезапустить MiniApps сейчас?", message,
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+            Reply(id, true, new JsonObject { ["message"] = message }, null, null);
+        }
+        catch (ApiError error) { if (!IsDisposed) Reply(id, false, null, error.Code, error.Message); }
+        catch (Exception error) { if (!IsDisposed) Reply(id, false, null, "telegram_install_failed", error.Message); }
+        finally { operation = false; }
+        if (restart)
+        {
+            exiting = true;
+            Application.Restart();
+        }
+    }
     private void RunOperation(string id, Func<object?> action)
     {
         if (operation) { Reply(id, false, null, "operation_in_progress", "Another operation is running"); return; }
@@ -607,10 +841,19 @@ internal sealed class LauncherForm : Form
         var files = new System.Collections.Specialized.StringCollection(); files.Add(copy); System.Windows.Forms.Clipboard.SetFileDropList(files);
         return new JsonObject { ["message"] = "Скопировано в буфер обмена" };
     }
+    private static bool IsNagaRuntimeFile(string relative)
+    {
+        var parts = relative.Split(Path.DirectorySeparatorChar);
+        return !parts.Any(part => part.Equals("tools", StringComparison.OrdinalIgnoreCase) ||
+            part.Equals("tests", StringComparison.OrdinalIgnoreCase)) &&
+            !parts[^1].Equals("source-snapshot.json", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string CreateSharePackage((MiniManifest Manifest, string Directory) app)
     {
         var files = Directory.EnumerateFiles(app.Directory, "*", SearchOption.AllDirectories)
             .Where(file => Path.GetFileName(file) is not ("storage.json" or "storage.json.bak"))
+            .Where(file => app.Manifest.Id != "local.naga.studio" || IsNagaRuntimeFile(Path.GetRelativePath(app.Directory, file)))
             .ToArray();
         var entry = Path.GetFullPath(Path.Combine(app.Directory, app.Manifest.Entry));
         var singleHtml = files.Length == 2 && files.Any(file => Path.GetFullPath(file).Equals(entry, StringComparison.OrdinalIgnoreCase)) &&
@@ -665,11 +908,11 @@ internal sealed class LauncherForm : Form
 
 internal sealed class MiniAppWindow : Form
 {
-    public MiniAppWindow(MiniManifest manifest, string directory)
+    public MiniAppWindow(MiniManifest manifest, string directory, string launchReason = "normal")
     {
-        Text = manifest.Name; Width = 1100; Height = 760; StartPosition = FormStartPosition.CenterParent;
+        Text = manifest.Localize(AppLanguage.Preference()).Name; Width = 1100; Height = 760; StartPosition = FormStartPosition.CenterParent;
         Size = WindowSizeStore.Load("app:" + manifest.Id, Size);
-        Controls.Add(new WebAppView(manifest, directory, Close) { Dock = DockStyle.Fill });
+        Controls.Add(new WebAppView(manifest, directory, Close, launchReason, () => DialogResult = DialogResult.OK) { Dock = DockStyle.Fill });
         FormClosing += (_, _) => WindowSizeStore.Save("app:" + manifest.Id, WindowState == FormWindowState.Normal ? Size : RestoreBounds.Size);
     }
 }

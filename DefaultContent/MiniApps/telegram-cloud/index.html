@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' miniapp: https://assets.miniapps.invalid https://interface.local https://modules.miniapp.local 'wasm-unsafe-eval'; style-src 'self' miniapp: https://assets.miniapps.invalid https://interface.local; connect-src wss://*.web.telegram.org; img-src blob:; media-src blob: https://media.miniapp.local; base-uri 'none'; form-action 'none'">
+  <title>Облако файлов</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="transfers.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <main>
+    <header id="cloud-toolbar" class="cloud-toolbar">
+      <span id="toolbar-title">Облако файлов</span>
+      <nav id="folders" aria-label="Путь папки" hidden></nav>
+      <button id="folder-actions" class="icon-button" type="button" aria-label="Действия с папкой" aria-expanded="false" aria-controls="folder-menu" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+      </button>
+      <div id="folder-menu" hidden>
+        <div id="folder-commands">
+          <button type="button" data-action="transfers" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 20V4m-4 4 4-4 4 4m4-4v16m-4-4 4 4 4-4"/></svg>
+            Передача
+          </button>
+          <button type="button" data-action="download-folder">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5h5l2 2h9v12Zm8-9v6m-3-3 3 3 3-3"/></svg>
+            Скачать папку
+          </button>
+          <button type="button" data-action="upload-files">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l5 5v13H6Zm8 0v5h5m-7 10v-7m-3 3 3-3 3 3"/></svg>
+            Загрузить файлы
+          </button>
+          <button type="button" data-action="upload-folder">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5h5l2 2h9v12Zm8-3v-6m-3 3 3-3 3 3"/></svg>
+            Загрузить папку
+          </button>
+          <button type="button" data-action="create-folder">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5h5l2 2h9v12Zm8-9v6m-3-3h6"/></svg>
+            Создать папку
+          </button>
+          <hr>
+          <button type="button" data-action="choose-channel">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h5l10-5v13L9 14H4Zm2 4 2 6h3l-2-6"/></svg>
+            Выбрать канал
+          </button>
+        </div>
+        <div id="catalog-options" hidden>
+          <hr>
+          <label class="catalog-option" for="view-mode">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h6v6h-6z"/></svg>
+            <span>Вид</span>
+            <select id="view-mode">
+              <option value="tiles">Плитки</option>
+              <option value="large">Крупные плитки</option>
+              <option value="list">Список</option>
+            </select>
+          </label>
+          <label class="catalog-option" for="sort-mode">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h13M5 10h10M5 15h7m6-1v6m-3-3 3 3 3-3"/></svg>
+            <span>Сортировка</span>
+            <select id="sort-mode">
+              <option value="name">Имя А–Я</option>
+              <option value="name-desc">Имя Я–А</option>
+              <option value="date">Сначала новые</option>
+              <option value="date-asc">Сначала старые</option>
+              <option value="size">Сначала большие</option>
+              <option value="size-asc">Сначала маленькие</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </header>
+    <p id="status" role="status" aria-live="polite"></p>
+    <p id="telegram-wait" role="status" hidden></p>
+    <fieldset id="controls">
+      <section id="welcome" class="panel">
+        <h2>Подключите аккаунт</h2>
+        <p>Войдите в <b>Unofficial Telegram</b> в этом же MiniApps и включите сохранение сеанса. Затем вернитесь сюда и подтвердите доступ к аккаунту.</p>
+        <button id="connect" class="primary" type="button">Использовать сохранённый вход</button>
+      </section>
+
+      <section id="drive" hidden>
+        <section class="library" aria-label="Файлы и папки">
+          <ul id="file-list" class="rows catalog" data-view="tiles" aria-label="Файлы канала"></ul>
+          <div id="catalog-end" aria-live="polite" hidden>
+            <span id="catalog-status"></span>
+            <button id="catalog-retry" type="button" hidden>Повторить</button>
+          </div>
+        </section>
+      </section>
+    </fieldset>
+    <div id="drop-target" hidden aria-hidden="true">
+      <div class="drop-card">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5h5l2 2h9v12Zm8-3v-6m-3 3 3-3 3 3"/></svg>
+        <strong>Отпустите файлы или папки</strong>
+        <span id="drop-destination"></span>
+      </div>
+    </div>
+    <div id="file-menu" aria-label="Действия с файлами" hidden>
+      <p id="file-menu-title"></p>
+      <button type="button" data-file-action="rename">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 19 1-5L16 4l4 4-10 10Zm9-13 4 4"/></svg>
+        Переименовать
+      </button>
+      <button type="button" data-file-action="move">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V5h5l2 2h9v4M4 15v4h16M7 13h10m-3-3 3 3-3 3"/></svg>
+        Переместить
+      </button>
+      <button type="button" data-file-action="delete">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13m-8 3v6m4-6v6"/></svg>
+        Удалить
+      </button>
+      <button type="button" data-file-action="share">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18q0-8 9-8V5l6 7-6 6v-4q-5 0-9 4Z"/></svg>
+        Поделиться
+      </button>
+      <button type="button" data-file-action="download">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m-4-4 4 4 4-4M5 16v4h14v-4"/></svg>
+        Скачать
+      </button>
+    </div>
+    <dialog id="transfers" class="panel" aria-labelledby="transfers-title">
+      <div class="heading">
+        <h2 id="transfers-title">Передача</h2>
+        <button id="close-transfers" class="icon-button" type="button" aria-label="Закрыть передачу" autofocus>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <p id="transfer-wait" role="status" hidden></p>
+      <div id="transfer-tabs" class="actions" role="group" aria-label="Направление передачи" hidden>
+        <button id="show-upload" type="button" aria-controls="upload" aria-pressed="true">Загрузка</button>
+        <button id="show-download" type="button" aria-controls="download" aria-pressed="false">Скачивание</button>
+      </div>
+      <section id="upload" class="transfer-pane" aria-labelledby="upload-title">
+        <div class="transfer-heading">
+          <h3 id="upload-title">К загрузке</h3>
+          <progress id="upload-progress" aria-label="Общий прогресс загрузки" hidden></progress>
+        </div>
+        <p id="upload-summary" class="transfer-summary"></p>
+        <p id="upload-detail" role="status"></p>
+        <ul id="queue" class="rows" aria-label="Выбранные файлы"></ul>
+        <div class="actions transfer-actions">
+          <button id="send" class="primary" type="button" hidden>Повторить</button>
+          <button id="clear-queue" type="button" hidden>Очистить список</button>
+        </div>
+      </section>
+      <section id="download" class="transfer-pane" aria-labelledby="download-title" hidden>
+        <div class="transfer-heading">
+          <h3 id="download-title">К скачиванию</h3>
+          <progress id="download-progress" aria-label="Общий прогресс скачивания" hidden></progress>
+        </div>
+        <p id="download-summary" class="transfer-summary"></p>
+        <p id="download-detail" role="status"></p>
+        <button id="cancel-folder-save" type="button" hidden>Отменить скачивание</button>
+      </section>
+    </dialog>
+    <dialog id="cloud-target" class="panel" aria-labelledby="cloud-target-title">
+      <div class="heading">
+        <h2 id="cloud-target-title"></h2>
+        <button id="close-cloud-target" class="icon-button" type="button" aria-label="Закрыть">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <input id="cloud-target-search" type="search" placeholder="Поиск" aria-label="Поиск">
+      <ul id="cloud-target-list" class="rows"></ul>
+    </dialog>
+    <dialog id="channels" class="panel" aria-labelledby="channels-title">
+      <div class="heading">
+        <h2 id="channels-title">Выберите канал</h2>
+        <button id="close-channels" class="icon-button" type="button" aria-label="Закрыть выбор канала">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <input id="channel-search" type="search" placeholder="Поиск по имени канала" aria-label="Поиск по имени канала">
+      <ul id="channel-list" class="rows" aria-label="Каналы"></ul>
+      <p id="channel-status" role="status"></p>
+      <button id="more-channels" type="button" hidden>Искать дальше</button>
+    </dialog>
+    <dialog id="preview" class="panel preview" aria-labelledby="preview-title">
+      <header class="heading preview-header">
+        <div class="preview-identity">
+          <div class="preview-title-line">
+            <h3 id="preview-title">Предпросмотр</h3>
+            <p id="preview-status" role="status" aria-live="polite"></p>
+          </div>
+          <p class="preview-file"><span id="preview-name"></span><time id="preview-date" hidden></time></p>
+        </div>
+        <div class="actions preview-actions">
+          <button id="preview-prev" class="icon-button" type="button" aria-label="Предыдущий файл" title="Предыдущий файл" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>
+          </button>
+          <button id="preview-next" class="icon-button" type="button" aria-label="Следующий файл" title="Следующий файл" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+          </button>
+          <button id="preview-scale" class="icon-button" type="button" aria-label="Исходный размер" aria-pressed="false" title="Показать в исходном размере" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path class="scale-original-icon" d="M4 9h5V4m11 5h-5V4M4 15h5v5m11-5h-5v5"/>
+              <path class="scale-fit-icon" d="M9 4H4v5m11-5h5v5M9 20H4v-5m11 5h5v-5"/>
+            </svg>
+          </button>
+          <button id="preview-unmute" class="icon-button" type="button" aria-label="Включить звук" title="Включить звук" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 4V5L7 9H3m12 0a4 4 0 0 1 0 6m2-8a7 7 0 0 1 0 10"/></svg>
+          </button>
+          <button id="save" class="icon-button" type="button" aria-label="Скачать на устройство" title="Скачать на устройство" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4"/></svg>
+          </button>
+          <button id="cancel-save" type="button" hidden>Отменить скачивание</button>
+          <button id="close-preview" class="icon-button" type="button" aria-label="Закрыть" title="Закрыть" autofocus>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+      </header>
+      <div id="preview-body"></div>
+    </dialog>
+  </main>
+</body>
+</html>

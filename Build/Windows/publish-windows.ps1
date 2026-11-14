@@ -1,9 +1,11 @@
 param(
     [string]$OutputDirectory = (Join-Path $PSScriptRoot "..\..\Output\Windows"),
     [switch]$SelfContained,
-    [switch]$NoRestore
+    [switch]$NoRestore,
+    [string]$InstallerContentDirectory
 )
 
+$ErrorActionPreference = "Stop"
 $project = Join-Path $PSScriptRoot "MiniAppRuntime.Windows.csproj"
 $output = [System.IO.Path]::GetFullPath($OutputDirectory)
 $cache = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\..\Cache\Windows"))
@@ -12,6 +14,8 @@ $runtime = Join-Path $output "Data"
 $executable = Join-Path $output "MiniApps.exe"
 $interface = Join-Path $output "Interface"
 $miniApps = Join-Path $output "MiniApps"
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
 $userData = Join-Path $runtime "User"
 $userDataBackup = Join-Path $cache "data-user-backup"
 $webViewUserData = Join-Path $runtime "WebView2\UserData"
@@ -62,20 +66,46 @@ New-Item -ItemType Directory -Path (Join-Path $runtime "WebView2") -Force | Out-
     $source = Join-Path $runtime $_
     if (Test-Path $source) { Move-Item -LiteralPath $source -Destination (Join-Path $runtime "WebView2") -Force }
 }
-foreach ($folderName in @("Interface", "MiniApps")) {
-    $packageRoot = Join-Path $staging $folderName
-    if (-not (Test-Path -LiteralPath $packageRoot)) { continue }
-    $installedRoot = Join-Path $output $folderName
-    New-Item -ItemType Directory -Path $installedRoot -Force | Out-Null
-    Get-ChildItem -LiteralPath $packageRoot -Recurse -File | ForEach-Object {
-        $relative = $_.FullName.Substring($packageRoot.TrimEnd('\').Length + 1)
-        if ($folderName -ne "MiniApps" -or [System.IO.Path]::GetFileName($relative) -notin @("storage.json", "storage.json.bak")) {
-            $destination = Join-Path $installedRoot $relative
-            New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
-            Copy-Item -LiteralPath $_.FullName -Destination $destination -Force
+$bundled = Join-Path $runtime "BundledMiniApps"
+New-Item -ItemType Directory -Path $bundled -Force | Out-Null
+$packageRoot = Join-Path $staging "MiniApps"
+Get-ChildItem -LiteralPath $packageRoot -Directory | Where-Object {
+    Test-Path -LiteralPath (Join-Path $_.FullName "manifest.json") -PathType Leaf
+} | ForEach-Object {
+    $archive = Join-Path $bundled ($_.Name + ".zip")
+    $folder = $_.FullName
+    $zip = [IO.Compression.ZipFile]::Open($archive, [IO.Compression.ZipArchiveMode]::Create)
+    try {
+        Get-ChildItem -LiteralPath $folder -Recurse -File | Sort-Object FullName -CaseSensitive | ForEach-Object {
+            $relative = $_.FullName.Substring($folder.Length + 1).Replace("\", "/")
+            $entry = $zip.CreateEntry($relative, [IO.Compression.CompressionLevel]::Optimal)
+            $entry.LastWriteTime = [DateTimeOffset]::new(2000, 1, 1, 0, 0, 0, [TimeSpan]::Zero)
+            $source = [IO.File]::OpenRead($_.FullName)
+            try {
+                $destination = $entry.Open()
+                try { $source.CopyTo($destination) }
+                finally { $destination.Dispose() }
+            }
+            finally { $source.Dispose() }
         }
     }
+    finally { $zip.Dispose() }
 }
+# Shared modules are editable and installed separately from app package code.
+if (Test-Path -LiteralPath (Join-Path $packageRoot "Modules")) {
+    New-Item -ItemType Directory -Path $miniApps -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $packageRoot "Modules") -Destination $miniApps -Recurse -Force
+    if ($InstallerContentDirectory) {
+        $setupModules = Join-Path $InstallerContentDirectory "MiniApps"
+        New-Item -ItemType Directory -Path $setupModules -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path $packageRoot "Modules") -Destination $setupModules -Recurse
+    }
+}
+
+$interfaceRoot = Join-Path $staging "Interface"
+if ($InstallerContentDirectory) { Copy-Item -LiteralPath $interfaceRoot -Destination $InstallerContentDirectory -Recurse }
+New-Item -ItemType Directory -Path $interface -Force | Out-Null
+Get-ChildItem -LiteralPath $interfaceRoot -Force | Copy-Item -Destination $interface -Recurse -Force
 Remove-Item -LiteralPath $staging -Recurse -Force
 if (Test-Path $userDataBackup) { Move-Item -LiteralPath $userDataBackup -Destination $userData }
 if (Test-Path $webViewUserDataBackup) { Move-Item -LiteralPath $webViewUserDataBackup -Destination $webViewUserData }

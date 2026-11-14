@@ -1,6 +1,8 @@
 (() => {
   'use strict';
 
+  const translate = globalThis.translateShoppingList ?? (message => message);
+
   const SCHEMA_VERSION = 2;
   const DEFAULT_COLORS = Object.freeze([
     '#65C18C', '#5DA9E9', '#F4A261', '#C58AF9', '#E76F8A', '#8B7CFF',
@@ -48,27 +50,27 @@
     return {
       schemaVersion: SCHEMA_VERSION,
       categories: [
-        { id: 'cat-produce', name: 'Vegetables and fruits', color: '#65C18C' },
-        { id: 'cat-dairy', name: 'Dairy', color: '#5DA9E9' },
-        { id: 'cat-grocery', name: 'Grocery', color: '#F4A261' },
-        { id: 'cat-home', name: 'For home', color: '#C58AF9' }
+        { id: 'cat-produce', name: translate("Vegetables and fruits"), color: '#65C18C' },
+        { id: 'cat-dairy', name: translate("Dairy"), color: '#5DA9E9' },
+        { id: 'cat-grocery', name: translate("Grocery"), color: '#F4A261' },
+        { id: 'cat-home', name: translate("For home"), color: '#C58AF9' }
       ],
       products: [
-        { id: 'prd-tomatoes', name: 'Tomatoes', categoryId: 'cat-produce', selected: true, bought: false },
-        { id: 'prd-bananas', name: 'Bananas', categoryId: 'cat-produce', selected: false, bought: false },
-        { id: 'prd-apples', name: 'Apples', categoryId: 'cat-produce', selected: false, bought: false },
-        { id: 'prd-potatoes', name: 'Potato', categoryId: 'cat-produce', selected: false, bought: false },
-        { id: 'prd-milk', name: 'Milk', categoryId: 'cat-dairy', selected: true, bought: false },
-        { id: 'prd-eggs', name: 'Eggs', categoryId: 'cat-dairy', selected: true, bought: false },
-        { id: 'prd-cheese', name: 'Cheese', categoryId: 'cat-dairy', selected: false, bought: false },
-        { id: 'prd-yogurt', name: 'Yogurt', categoryId: 'cat-dairy', selected: false, bought: false },
-        { id: 'prd-bread', name: 'Bread', categoryId: 'cat-grocery', selected: true, bought: false },
-        { id: 'prd-rice', name: 'Rice', categoryId: 'cat-grocery', selected: false, bought: false },
-        { id: 'prd-pasta', name: 'Pasta', categoryId: 'cat-grocery', selected: false, bought: false },
-        { id: 'prd-coffee', name: 'Coffee', categoryId: 'cat-grocery', selected: false, bought: false },
-        { id: 'prd-bags', name: 'Garbage bags', categoryId: 'cat-home', selected: false, bought: false },
-        { id: 'prd-paper', name: 'Paper towels', categoryId: 'cat-home', selected: false, bought: false },
-        { id: 'prd-dishsoap', name: 'Dish detergent', categoryId: 'cat-home', selected: false, bought: false }
+        { id: 'prd-tomatoes', name: translate("Tomatoes"), categoryId: 'cat-produce', selected: true, bought: false },
+        { id: 'prd-bananas', name: translate("Bananas"), categoryId: 'cat-produce', selected: false, bought: false },
+        { id: 'prd-apples', name: translate("Apples"), categoryId: 'cat-produce', selected: false, bought: false },
+        { id: 'prd-potatoes', name: translate("Potato"), categoryId: 'cat-produce', selected: false, bought: false },
+        { id: 'prd-milk', name: translate("Milk"), categoryId: 'cat-dairy', selected: true, bought: false },
+        { id: 'prd-eggs', name: translate("Eggs"), categoryId: 'cat-dairy', selected: true, bought: false },
+        { id: 'prd-cheese', name: translate("Cheese"), categoryId: 'cat-dairy', selected: false, bought: false },
+        { id: 'prd-yogurt', name: translate("Yogurt"), categoryId: 'cat-dairy', selected: false, bought: false },
+        { id: 'prd-bread', name: translate("Bread"), categoryId: 'cat-grocery', selected: true, bought: false },
+        { id: 'prd-rice', name: translate("Rice"), categoryId: 'cat-grocery', selected: false, bought: false },
+        { id: 'prd-pasta', name: translate("Pasta"), categoryId: 'cat-grocery', selected: false, bought: false },
+        { id: 'prd-coffee', name: translate("Coffee"), categoryId: 'cat-grocery', selected: false, bought: false },
+        { id: 'prd-bags', name: translate("Garbage bags"), categoryId: 'cat-home', selected: false, bought: false },
+        { id: 'prd-paper', name: translate("Paper towels"), categoryId: 'cat-home', selected: false, bought: false },
+        { id: 'prd-dishsoap', name: translate("Dish detergent"), categoryId: 'cat-home', selected: false, bought: false }
       ],
       settings: {
         checkboxesRight: true,
@@ -78,17 +80,10 @@
     };
   }
 
-  function migrateState(raw) {
+  function normalizeState(raw) {
     if (!raw || typeof raw !== 'object') return createDefaultState();
 
-    const sourceCategories = Array.isArray(raw.categories) ? [...raw.categories] : [];
-    if (Number(raw.schemaVersion) < 2) {
-      sourceCategories.sort((a, b) => {
-        const left = Number.isFinite(a?.order) ? a.order : Number.MAX_SAFE_INTEGER;
-        const right = Number.isFinite(b?.order) ? b.order : Number.MAX_SAFE_INTEGER;
-        return left - right;
-      });
-    }
+    const sourceCategories = Array.isArray(raw.categories) ? raw.categories : [];
 
     const categoryIds = new Set();
     const categories = [];
@@ -97,7 +92,7 @@
       let id = normalizeName(source.id);
       if (!id || categoryIds.has(id)) id = makeId('cat');
       categoryIds.add(id);
-      const baseName = normalizeName(source.name, `Category ${categories.length + 1}`);
+      const baseName = normalizeName(source.name, `${translate("Category")} ${categories.length + 1}`);
       let name = baseName;
       let suffix = 2;
       while (categories.some(category => namesEqual(category.name, name))) name = `${baseName} (${suffix++})`;
@@ -111,7 +106,7 @@
     const sourceProducts = Array.isArray(raw.products) ? raw.products : [];
     if (categories.length === 0 && sourceProducts.length > 0) {
       const recoveredId = makeId('cat-recovered');
-      categories.push({ id: recoveredId, name: 'Uncategorized', color: DEFAULT_COLORS[0] });
+      categories.push({ id: recoveredId, name: translate("Uncategorized"), color: DEFAULT_COLORS[0] });
       categoryIds.add(recoveredId);
     }
 
@@ -143,9 +138,7 @@
     });
 
     const settings = raw.settings && typeof raw.settings === 'object' ? raw.settings : {};
-    const checkboxesRight = typeof settings.checkboxesRight === 'boolean'
-      ? settings.checkboxesRight
-      : settings.checkboxSide !== 'left';
+    const checkboxesRight = settings.checkboxesRight !== false;
 
     return {
       schemaVersion: SCHEMA_VERSION,
@@ -202,8 +195,8 @@
   }
 
   function addCategory(state, payload) {
-    const name = requireName(payload?.name, 'Enter category name');
-    if (duplicateCategory(state, name)) throw new DomainError('duplicate_category', 'There is already a category with this name');
+    const name = requireName(payload?.name, translate("Enter category name"));
+    if (duplicateCategory(state, name)) throw new DomainError('duplicate_category', translate("There is already a category with this name"));
     const color = normalizeColor(payload?.color, DEFAULT_COLORS[state.categories.length % DEFAULT_COLORS.length]);
     return withTimestamp({
       ...state,
@@ -213,9 +206,9 @@
 
   function renameCategory(state, categoryId, nextName) {
     const category = categoryById(state, categoryId);
-    if (!category) throw new DomainError('category_not_found', 'Category not found');
-    const name = requireName(nextName, 'Enter category name');
-    if (duplicateCategory(state, name, categoryId)) throw new DomainError('duplicate_category', 'There is already a category with this name');
+    if (!category) throw new DomainError('category_not_found', translate("Category not found"));
+    const name = requireName(nextName, translate("Enter category name"));
+    if (duplicateCategory(state, name, categoryId)) throw new DomainError('duplicate_category', translate("There is already a category with this name"));
     return withTimestamp({
       ...state,
       categories: state.categories.map(item => item.id === categoryId ? { ...item, name } : item)
@@ -224,7 +217,7 @@
 
   function setCategoryColor(state, categoryId, nextColor) {
     const category = categoryById(state, categoryId);
-    if (!category) throw new DomainError('category_not_found', 'Category not found');
+    if (!category) throw new DomainError('category_not_found', translate("Category not found"));
     const color = normalizeColor(nextColor, category.color);
     return withTimestamp({
       ...state,
@@ -233,7 +226,7 @@
   }
 
   function deleteCategory(state, categoryId) {
-    if (!categoryById(state, categoryId)) throw new DomainError('category_not_found', 'Category not found');
+    if (!categoryById(state, categoryId)) throw new DomainError('category_not_found', translate("Category not found"));
     return withTimestamp({
       ...state,
       categories: state.categories.filter(category => category.id !== categoryId),
@@ -243,7 +236,7 @@
 
   function moveCategory(state, categoryId, direction) {
     const index = state.categories.findIndex(category => category.id === categoryId);
-    if (index < 0) throw new DomainError('category_not_found', 'Category not found');
+    if (index < 0) throw new DomainError('category_not_found', translate("Category not found"));
     const nextIndex = direction === 'up' ? index - 1 : direction === 'down' ? index + 1 : index;
     if (nextIndex < 0 || nextIndex >= state.categories.length || nextIndex === index) return state;
     const categories = [...state.categories];
@@ -252,10 +245,10 @@
   }
 
   function addProduct(state, payload) {
-    const name = requireName(payload?.name, 'Enter the product name');
+    const name = requireName(payload?.name, translate("Enter the product name"));
     const categoryId = normalizeName(payload?.categoryId);
-    if (!categoryById(state, categoryId)) throw new DomainError('category_not_found', 'Selected category not found');
-    if (duplicateProduct(state, categoryId, name)) throw new DomainError('duplicate_product', 'There is already such a product in this category');
+    if (!categoryById(state, categoryId)) throw new DomainError('category_not_found', translate("Selected category not found"));
+    if (duplicateProduct(state, categoryId, name)) throw new DomainError('duplicate_product', translate("There is already such a product in this category"));
     return withTimestamp({
       ...state,
       products: [...state.products, {
@@ -270,10 +263,10 @@
 
   function renameProduct(state, productId, nextName) {
     const product = productById(state, productId);
-    if (!product) throw new DomainError('product_not_found', 'Product not found');
-    const name = requireName(nextName, 'Enter the product name');
+    if (!product) throw new DomainError('product_not_found', translate("Product not found"));
+    const name = requireName(nextName, translate("Enter the product name"));
     if (duplicateProduct(state, product.categoryId, name, productId)) {
-      throw new DomainError('duplicate_product', 'There is already such a product in this category');
+      throw new DomainError('duplicate_product', translate("There is already such a product in this category"));
     }
     return withTimestamp({
       ...state,
@@ -283,11 +276,11 @@
 
   function moveProduct(state, productId, categoryId) {
     const product = productById(state, productId);
-    if (!product) throw new DomainError('product_not_found', 'Product not found');
-    if (!categoryById(state, categoryId)) throw new DomainError('category_not_found', 'Selected category not found');
+    if (!product) throw new DomainError('product_not_found', translate("Product not found"));
+    if (!categoryById(state, categoryId)) throw new DomainError('category_not_found', translate("Selected category not found"));
     if (categoryId === product.categoryId) return state;
     if (duplicateProduct(state, categoryId, product.name, productId)) {
-      throw new DomainError('duplicate_product', 'There is already a product with the same name in the selected category');
+      throw new DomainError('duplicate_product', translate("There is already a product with the same name in the selected category"));
     }
     return withTimestamp({
       ...state,
@@ -296,12 +289,12 @@
   }
 
   function deleteProduct(state, productId) {
-    if (!productById(state, productId)) throw new DomainError('product_not_found', 'Product not found');
+    if (!productById(state, productId)) throw new DomainError('product_not_found', translate("Product not found"));
     return withTimestamp({ ...state, products: state.products.filter(product => product.id !== productId) });
   }
 
   function setProductSelected(state, productId, selected) {
-    if (!productById(state, productId)) throw new DomainError('product_not_found', 'Product not found');
+    if (!productById(state, productId)) throw new DomainError('product_not_found', translate("Product not found"));
     return withTimestamp({
       ...state,
       products: state.products.map(product => product.id === productId
@@ -312,7 +305,7 @@
 
   function setProductBought(state, productId, bought) {
     const product = productById(state, productId);
-    if (!product) throw new DomainError('product_not_found', 'Product not found');
+    if (!product) throw new DomainError('product_not_found', translate("Product not found"));
     if (!product.selected) return state;
     return withTimestamp({
       ...state,
@@ -369,8 +362,10 @@
     DEFAULT_COLORS,
     DomainError,
     clone,
+    makeId,
+    withTimestamp,
     createDefaultState,
-    migrateState,
+    normalizeState,
     normalizeName,
     isHexColor,
     namesEqual,

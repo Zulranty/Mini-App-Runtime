@@ -1,13 +1,26 @@
 {
   "id": "com.sempai.shoppinglist",
   "name": "Shopping List",
-  "version": "2.0.0",
-  "sdkVersion": 1,
+  "version": "2.2.10",
+  "minRuntimeVersion": "1.5.25",
+  "sdkVersion": 2,
   "entry": "index.html",
-  "description": "A local shopping list with categories, editing, themes, and reliable storage",
+  "description": "Shopping list with local storage and optional Telegram sync",
   "author": "Sempai",
   "icon": "assets/icon.png",
   "permissions": [
-    "storage"
-  ]
+    "storage",
+    "telegram.session"
+  ],
+  "defaultLanguage": "en",
+  "locales": {
+    "en": {
+      "entry": "index.html"
+    },
+    "ru": {
+      "entry": "ru/index.html",
+      "name": "Список покупок",
+      "description": "Список покупок с локальным сохранением и синхронизацией через Telegram"
+    }
+  }
 }

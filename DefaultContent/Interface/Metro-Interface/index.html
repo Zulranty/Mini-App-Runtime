@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- Build: metro-v4-interface-settings; equal tiles; stable colors; launcher.getAppInfo; native interface settings -->
-<html lang="en">
+<html lang="en" data-miniapps-telegram-settings>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -1294,6 +1294,7 @@ ${Number(value).toLocaleString('en-US')} bytes`;
             <nav class="settings-nav" aria-label="Settings sections">
               <button type="button" class="active" data-page="personalization">Personalization</button>
               <button type="button" data-page="interfaces">Interfaces</button>
+              <button type="button" data-page="telegram">Telegram</button>
               <button type="button" data-page="about">About the application</button>
             </nav>
             <div class="settings-content">
@@ -1322,6 +1323,12 @@ ${Number(value).toLocaleString('en-US')} bytes`;
                 <div class="setting-group">
                   <button id="importInterface" class="metro-button" type="button">Add interface</button>
                 </div>
+              </section>
+
+              <section class="settings-page" data-settings-page="telegram" hidden>
+                <h2>Telegram</h2>
+                <div id="telegramOptions"></div>
+                <button id="installTelegram" class="metro-button" type="button"></button>
               </section>
 
               <section class="settings-page" data-settings-page="about"hidden>
@@ -1379,7 +1386,10 @@ ${Number(value).toLocaleString('en-US')} bytes`;
       closeMenu();
       closeSettings();
       await loadInterfaceSettings();
-      const info = await launcher.getSettingsInfo();
+      const [info, hasTelegram] = await Promise.all([
+        launcher.getSettingsInfo(),
+        launcher.hasTelegramClient()
+      ]);
       settingsOverlay = buildSettingsShell(info || {});
       document.body.append(settingsOverlay);
 
@@ -1433,6 +1443,16 @@ ${Number(value).toLocaleString('en-US')} bytes`;
       settingsOverlay.querySelector('#importInterface').onclick = () => call(async () => {
         await launcher.importInterface();
         await renderInterfaces();
+      });
+
+      const telegram = settingsOverlay.querySelector('#installTelegram');
+      launcher.mountTelegramSettings?.(settingsOverlay.querySelector('#telegramOptions'));
+      telegram.textContent = hasTelegram ? 'Update Telegram' : 'Install Telegram';
+      telegram.onclick = () => call(async () => {
+        const result = await launcher.installTelegram();
+        telegram.textContent = 'Update Telegram';
+        await loadApps();
+        return result;
       });
 
       settingsOverlay.querySelector('.settings-window').focus?.();

@@ -3,10 +3,97 @@
 
   const pending = new Map();
   const events = new Map();
+  const modules = new Map();
+  const streams = new Map();
+  let nextStream = 0;
+
+  if (window.chrome?.webview) {
+    const now = window.performance.now.bind(window.performance);
+    let lastInput = -Infinity;
+    const markInput = event => { if (event.isTrusted) lastInput = now(); };
+    window.addEventListener('pointerdown', markInput, true);
+    window.addEventListener('keydown', markInput, true);
+    Object.defineProperty(window, '__miniRecentUserInput', {
+      value: () => now() - lastInput <= 1_000
+    });
+  }
+
+  function streamSource(read) {
+    const source = 'stream-' + ++nextStream;
+    const controller = new AbortController();
+    streams.set(source, { read, signal: controller.signal });
+    return {
+      source,
+      dispose() {
+        streams.delete(source);
+        controller.abort();
+      }
+    };
+  }
+
+  async function answerStream({ source, request, offset, length, waitUntil = 0 }) {
+    const stream = streams.get(source);
+    let data;
+    if (stream) {
+      stream.waitUntil ??= waitUntil;
+      const requestController = new AbortController();
+      const abort = () => requestController.abort();
+      stream.signal.addEventListener('abort', abort, { once: true });
+      const deadline = Date.now() + 40_000;
+      let timer;
+      function checkDeadline() {
+        const remaining = Math.max(deadline, stream.waitUntil + 40_000) - Date.now();
+        if (remaining <= 0) abort();
+        else timer = setTimeout(checkDeadline, Math.min(remaining, 86_400_000));
+      }
+      checkDeadline();
+      try {
+        const bytes = await stream.read(offset, length, requestController.signal);
+        if (bytes?.byteLength === length && !requestController.signal.aborted) {
+          if (typeof bytes.toBase64 === 'function') data = bytes.toBase64();
+          else {
+            let binary = '';
+            for (let i = 0; i < bytes.length; i += 8192) {
+              binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+            }
+            data = btoa(binary);
+          }
+        }
+      } catch {}
+      finally {
+        clearTimeout(timer);
+        stream.signal.removeEventListener('abort', abort);
+      }
+    }
+    await call('streams.reply', { request, data }).catch(() => {});
+  }
+
+  function loadModule(id) {
+    if (typeof id !== 'string' || !/^[a-z][a-z0-9-]{0,47}$/.test(id))
+      return Promise.reject(Object.assign(new Error('Invalid module ID'), { code: 'invalid_module_id' }));
+    if (modules.has(id)) return modules.get(id);
+    const script = document.createElement('script');
+    script.src = 'https://modules.miniapp.local/' + id + '/index.js';
+    const loaded = new Promise((resolve, reject) => {
+      script.onload = () => resolve();
+      script.onerror = () => {
+        script.remove();
+        modules.delete(id);
+        reject(Object.assign(new Error('Could not load module ' + id), { code: 'module_load_failed' }));
+      };
+    });
+    modules.set(id, loaded);
+    document.head.append(script);
+    return loaded;
+  }
 
   function post(raw) {
+    if (window.MiniRuntime?.postMessage) {
+      window.MiniRuntime.postMessage(raw);
+      return;
+    }
     if (window.MiniRuntime && typeof window.MiniRuntime.call === 'function') {
-      window.MiniRuntime.call(raw); // Android JavascriptInterface
+      window.MiniRuntime.call(raw); // Compatibility with earlier hosts
       return;
     }
     if (window.chrome && window.chrome.webview) {
@@ -55,6 +142,11 @@
     response.success ? item.resolve(response.result) : item.reject(Object.assign(new Error(response.error.message), { code: response.error.code }));
   };
   window.__miniRuntimeEvent = (name, payload) => (events.get(name) || []).slice().forEach(fn => { try { fn(payload); } catch (_) {} });
+  events.set('streams.read', [request => { void answerStream(request); }]);
+  events.set('streams.waitUntil', [({ source, until }) => {
+    const stream = streams.get(source);
+    if (stream) stream.waitUntil = until;
+  }]);
   // Native hosts await this promise with a short timeout. `handled()` is deliberately
   // synchronous so a hung handler never blocks the platform Back/Escape behaviour.
   window.__miniRuntimeBackRequested = () => {
@@ -64,8 +156,46 @@
     return handled;
   };
   window.mini = {
+    locale: { get: () => call('locale.get') },
     app: { getInfo: () => call('app.getInfo'), getAppInfo: () => call('app.getAppInfo'), close: () => call('app.close'), getRuntimeVersion: () => call('app.getRuntimeVersion'), getLaunchParams: () => call('app.getLaunchParams'), setWindowTitle: title => call('app.setWindowTitle', { title }), onBackRequested: fn => window.mini.events.on('navigation.backRequested', event => { if (fn() === true) event.handled(); }) },
     runtime: { getCapabilities: () => call('runtime.getCapabilities'), supports: name => call('runtime.supports', { name }) },
+    logs: { write: (event, fields) => call('logs.write', { event, fields }) },
+    modules: { load: loadModule },
+    streams: {
+      async open(options, read) {
+        const source = streamSource(read);
+        try {
+          const url = await call('streams.open', { ...options, source: source.source });
+          return {
+            url,
+            close() {
+              source.dispose();
+              return call('streams.close', { source: source.source });
+            }
+          };
+        } catch (error) {
+          source.dispose();
+          throw error;
+        }
+      },
+      async save(options, read, signal) {
+        if (signal?.aborted) return null;
+        const source = streamSource(read);
+        const cancel = () => {
+          source.dispose();
+          void call('streams.close', { source: source.source }).catch(() => {});
+        };
+        signal?.addEventListener('abort', cancel, { once: true });
+        try {
+          const method = options.directoryId === undefined ? 'streams.save' : 'streams.saveInDirectory';
+          return await call(method, { ...options, source: source.source });
+        } finally {
+          signal?.removeEventListener('abort', cancel);
+          source.dispose();
+        }
+      }
+    },
+    functions: { call },
     navigation: { setBackEnabled: enabled => call('navigation.setBackEnabled', { enabled }), getState: () => call('navigation.getState') },
     storage: Object.assign({}, privateStorage, { private: privateStorage, public: publicStorage, getPublic: key => publicStorage.get(key), setPublic: (key, value) => publicStorage.set(key, value), removePublic: key => publicStorage.remove(key), clearPublic: () => publicStorage.clear(), publicKeys: () => publicStorage.keys(), getMany: keys => call('storage.getMany', { keys }), setMany: values => call('storage.setMany', { values }), transaction: transaction => call('storage.transaction', transaction) }),
     permissions: { query: permission => call('permissions.query', { permission }), request: permission => call('permissions.request', { permission }), openSettings: () => call('permissions.openSettings') },
@@ -109,6 +239,8 @@
       listAppDirectory: (id, options) => call('files.listAppDirectory', Object.assign({ id }, options || {})),
       pickDirectory: options => call('files.pickDirectory', options),
       listDirectory: (id, options) => call('files.listDirectory', Object.assign({ id }, options || {})),
+      writeChecked: (id, options) => call('files.writeChecked', { ...options, id }),
+      releaseDirectory: id => call('files.releaseDirectory', { id }),
       openInDirectory: (id, options) => call('files.openInDirectory', Object.assign({ id }, options || {})),
       createInDirectory: (id, options) => call('files.createInDirectory', Object.assign({ id }, options || {})),
       writeChunk: (id, options) => call('files.writeChunk', Object.assign({ id }, options || {})),

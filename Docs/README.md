@@ -4,33 +4,128 @@ Mini App Runtime is a local-first host for HTML mini-apps on Android and Windows
 
 The project is designed for editable, offline-capable mini-apps rather than hosted web applications. It does not bundle Chromium: Android uses the system WebView and Windows uses the installed Microsoft Edge WebView2 Runtime.
 
-## Start here
+## Quick Start
 
-1. Build the platform you need from the repository root:
+Build a small **Quick Start Notes** app, save a note, then reopen the app to
+check that the note persists. The same ZIP works on Android and Windows.
 
-   ```bat
-   build\Scripts\BuildWindows.cmd
-   build\Scripts\BuildAndroid.cmd
+### 1. Open MiniApps
+
+If you already have MiniApps installed, open the launcher. To build a local
+copy, run the command for your platform from the repository root:
+
+| Platform | Command | File to install |
+| --- | --- | --- |
+| Windows | `Build\Scripts\BuildWindows.cmd` | `Output\Windows\MiniAppsSetup.exe` |
+| Android | `Build\Scripts\BuildAndroid.cmd Local` | `Output\Android\MiniApps-local.apk` |
+
+See [Requirements](#requirements) for build and runtime dependencies. On
+Android, copy the APK to your device, install it and grant MiniApps access to
+its shared folder when prompted.
+
+### 2. Create the mini-app
+
+Save these two UTF-8 files in a folder named `quick-start-notes`.
+
+**manifest.json**
+
+```json
+{
+  "id": "com.example.quickstart.notes",
+  "name": "Quick Start Notes",
+  "version": "1.0.0",
+  "sdkVersion": 2,
+  "entry": "index.html",
+  "permissions": ["storage"]
+}
+```
+
+**index.html**
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quick Start Notes</title>
+</head>
+<body>
+  <h1>Quick Start Notes</h1>
+  <label for="note">Note</label>
+  <input id="note" disabled>
+  <button id="save" type="button" disabled>Save</button>
+  <p id="status" role="status"></p>
+
+  <script>
+    const note = document.querySelector('#note');
+    const save = document.querySelector('#save');
+    const status = document.querySelector('#status');
+
+    async function restoreNote() {
+      try {
+        const permission = await mini.permissions.query('storage');
+        if (permission === 'granted') {
+          note.value = (await mini.storage.private.get('note')) ?? '';
+        }
+      } catch (error) {
+        status.textContent = 'Could not load the note (' +
+          (error.code ?? 'runtime_unavailable') + ').';
+      } finally {
+        note.disabled = false;
+        save.disabled = false;
+      }
+    }
+
+    save.addEventListener('click', async () => {
+      save.disabled = true;
+      try {
+        await mini.storage.private.set('note', note.value);
+        status.textContent = 'Saved.';
+      } catch (error) {
+        status.textContent = 'Could not save the note (' +
+          (error.code ?? 'runtime_unavailable') + ').';
+      } finally {
+        save.disabled = false;
+      }
+    });
+
+    restoreNote();
+  </script>
+</body>
+</html>
+```
+
+Open the page through MiniApps so the host can inject `mini.*`. On first
+launch the example checks permission without opening a prompt. Pressing
+**Save** supplies the gesture required for the host to request storage
+access. Subsequent launches read the note once that access is granted.
+
+### 3. Import and verify
+
+1. From the directory containing `quick-start-notes`, run this in PowerShell:
+
+   ```powershell
+   Compress-Archive -Path .\quick-start-notes\manifest.json, .\quick-start-notes\index.html -DestinationPath .\quick-start-notes.zip
    ```
 
-   `BuildWindows.cmd` produces `Output/Windows/MiniAppsSetup.exe`; `BuildAndroid.cmd` produces `Output/Android/MiniApps.apk`. For local installation without configuring a production key, run `Build\Scripts\BuildAndroid.cmd Local`: it produces `Output/Android/MiniApps-local.apk` with the SDK debug certificate and release behavior.
-
-2. Create a folder containing `manifest.json` and `index.html`.
-
-   ```text
-   hello-mini-app/
-   |- manifest.json
-   `- index.html
-   ```
-
-3. Install the folder or its ZIP archive in the launcher. On Android, packages can also be placed in `/storage/emulated/0/MiniApps`.
+   The ZIP root must contain `manifest.json` and `index.html` directly.
+2. On Android, copy the ZIP to a location you can select in the device's file
+   picker. On either platform, open the launcher menu, choose **Add app** in
+   the default interface, and select `quick-start-notes.zip`.
+3. Open **Quick Start Notes**, type a note, and press **Save**. Confirm
+   the storage prompt with **Allow** on Android or **Yes** on Windows,
+   then wait for **Saved.**
+4. Return to the launcher and reopen **Quick Start Notes**. The note should
+   already be in the input field. Its private storage is local to each
+   installation, so repeat the save-and-reopen check on each platform.
 
 ## Requirements
 
 | Target | Build requirements | Runtime requirements |
 | --- | --- | --- |
-| Android | JDK 17+, Android SDK Platform 35, committed Gradle Wrapper | Android 7.0 (API 24) or later and Android System WebView |
-| Windows | .NET SDK 8+, Inno Setup 6+ | x64 .NET Desktop Runtime 8+ and Microsoft Edge WebView2 Runtime |
+| Android | JDK 17+, Android SDK Platform 36, committed Gradle Wrapper | Android 7.0 (API 24) or later with a Chromium-based system WebView 98 or newer with WebMessageListener |
+| Windows | .NET SDK 10+, Inno Setup 6+ | x64 .NET 10 Desktop Runtime and Microsoft Edge WebView2 Runtime |
 
 The Gradle Wrapper downloads Gradle 8.14 on its first use. Windows restores NuGet packages when the local restore cache is absent, so the first build needs internet access.
 
@@ -44,50 +139,23 @@ keystore and passwords outside this repository and back them up securely. A
 different key cannot update an installed app signed by the original key. The
 local certificate is stored by the SDK in the normal debug keystore; retaining
 that keystore permits updates to earlier locally signed APKs.
+Use `Build\Scripts\BuildAndroid.cmd Bundle` to build a release AAB with the
+distribution key. The Android target is API 36. Shared-folder access is
+required by the launcher and is subject to Google Play permission review.
 
 ## Documentation map
 
 - [Architecture](architecture.md) — components, data flow, and repository layout.
 - [Mini-app format](mini-app-format.md) — manifests, packaging, updates, permissions, network policy, and notifications.
+- [Shared modules and Telegram](telegram.md) — drop-in libraries and setup for the personal-account Telegram mini-app.
 - [Runtime API](runtime-api.md) — the `mini.*` bridge, feature detection, limits, and platform availability.
 - [Local device presets](local-devices.md) — generic LAN discovery, endpoint capabilities, protocol and verification.
-- [Launcher management](launcher-management.md) — application lifecycle, sharing, rollback, and trusted launcher operations.
+- [Using the launcher](launcher-management.md) — app cards, built-in apps, Telegram setup, and themes.
+- [Package management](mini-app-management.md) — updates, rollback, and launcher permission APIs.
 - [Launcher interface module](interface-module.md) — editable launcher interfaces and Windows app bars.
 - [Security model](security-model.md) — trust boundaries, storage isolation, file capabilities, and network controls.
-- [Release readiness](release-readiness.md) — verified build checks and remaining distribution gates.
+- [Release checklist](release-readiness.md) — distribution requirements and the historical September 2026 review.
 - [Windows build details](windows-build.md) and [Windows distribution](windows-distribution.md) — publish layout, installer behavior, and updates.
-
-## Mini-app example
-
-```json
-{
-  "id": "com.example.hello",
-  "name": "Hello",
-  "version": "1.0.0",
-  "sdkVersion": 2,
-  "entry": "index.html",
-  "permissions": ["storage"]
-}
-```
-
-```html
-<!doctype html>
-<meta charset="utf-8">
-<title>Hello</title>
-<button id="increment">Count: 0</button>
-<script>
-  const button = document.querySelector('#increment');
-  let count = 0;
-
-  button.addEventListener('click', async () => {
-    count += 1;
-    await mini.storage.set('count', count);
-    button.textContent = `Count: ${count}`;
-  });
-</script>
-```
-
-All bridge calls return a `Promise`. Call `mini.runtime.supports(name)` or `mini.runtime.getCapabilities()` before using optional platform features.
 
 ## Runtime data locations
 
@@ -109,7 +177,7 @@ Windows keeps application state in the chosen installation folder. `MiniApps/` c
 | `permissions` | No | Requested capabilities. |
 | `network` | Required for controlled network access | Origin allowlist and opt-in network flags. |
 
-Supported permissions are `storage`, `clipboard.write`, `clipboard.read`, `files.pick`, `files.save`, `files.directory`, `share`, `secureStorage`, `network`, `notifications`, `system.open`, and `haptics`.
+Supported permissions are `storage`, `clipboard.write`, `clipboard.read`, `files.pick`, `files.save`, `files.directory`, `share`, `secureStorage`, `network`, `notifications`, `system.open`, `haptics`, and `telegram.session`.
 
 ## API quick reference
 
@@ -130,7 +198,7 @@ Every call is asynchronous and may reject with a stable error `code`. Use `mini.
 
 ## Update and sharing behavior
 
-The runtime identifies an installed mini-app by `manifest.id`. A package with the same ID updates an existing app only when its version is newer; public `storage.json` is retained. Invalid packages do not replace the active app. Sharing exports either a self-contained HTML file or a ZIP of application code; private and secure storage are never exported.
+The runtime identifies an installed mini-app by `manifest.id`. Manual imports, packages scanned from the MiniApps folder, and bundled updates on both platforms accept the same version or a newer version. Updates keep public `storage.json` and its recovery copy. Invalid packages leave the active app in place. Sharing exports a self-contained HTML file or a ZIP of application code. Private and secure storage stay on the device.
 
 ## Launcher interfaces
 
@@ -141,7 +209,7 @@ Launcher interfaces are editable HTML/CSS/JavaScript packages. The active interf
 | Path | Purpose |
 | --- | --- |
 | `Code/Android/app/` | Kotlin Android host |
-| `Code/Windows/` | .NET 8 WinForms and WebView2 host |
+| `Code/Windows/` | .NET 10 WinForms and WebView2 host |
 | `Code/Framework/shared/` | JavaScript bridges shared by both hosts |
 | `DefaultContent/` | Built-in mini-apps and interfaces packaged for Windows |
 | `Build/` | Build configuration, scripts, and platform packaging files |

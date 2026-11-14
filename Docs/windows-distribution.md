@@ -2,29 +2,17 @@
 
 ## Build
 
-Run these commands from the project root:
+Run `Build\Scripts\BuildWindows.cmd` from the repository root to create
+`Output\Windows\MiniAppsSetup.exe`. The build requires .NET SDK 10 or newer
+and Inno Setup 6. The script restores NuGet dependencies before publishing.
+The first build needs access to the package sources.
 
-```bat
-build\Scripts\BuildWindows.cmd
-build\Scripts\BuildAndroid.cmd
-build\Scripts\BuildAll.cmd
-```
+Use `Build\Scripts\BuildAll.cmd` to build both platforms. For Android APK
+signing and bundle options, see [Requirements](README.md#requirements).
+Build intermediates go to `Cache` and distributable artifacts go to `Output`.
 
-`BuildWindows.cmd` creates `Output/Windows/MiniAppsSetup.exe`. `BuildAndroid.cmd` creates the release APK at `Output/Android/MiniApps.apk`. `BuildAll.cmd` runs both scripts; none of these scripts creates an Android debug APK.
-
-When a build is launched interactively and fails, its script leaves the console open with the exit code visible. Set `MINIAPPS_NO_PAUSE=1` when invoking an individual script from automation. `BuildAll.cmd` suppresses duplicate pauses in its child scripts and pauses once for the combined failure.
-
-Android uses the committed Gradle Wrapper in `build/Android`, which downloads Gradle 8.14 on its first run. Windows restores NuGet packages automatically when its cache is absent. The first build therefore needs internet access.
-
-An Android release requires a permanent signing keystore supplied through
-`MINIAPPS_ANDROID_KEYSTORE`, `MINIAPPS_ANDROID_STORE_PASSWORD`,
-`MINIAPPS_ANDROID_KEY_ALIAS`, and `MINIAPPS_ANDROID_KEY_PASSWORD`. The build
-fails without these values or the keystore file. Never publish an APK signed
-with a temporary or debug key; Android updates require the same signing key.
-
-Before building, the scripts check their prerequisites: Android requires JDK 17+, Android SDK Platform 35, the committed Wrapper, and release signing credentials; Windows requires .NET SDK 8+ and Inno Setup 6+.
-
-The `build` directory stores the build configurations and scripts. Re-creatable intermediates are written to `Cache` and may be deleted; final distributables remain in `Output`.
+For unattended builds, set `MINIAPPS_NO_PAUSE=1` for an individual platform
+script or `MINIAPPS_NONINTERACTIVE=1` for `BuildAll.cmd`.
 
 ## Installed layout
 
@@ -33,35 +21,39 @@ The Windows installer lets the user choose a writable folder. If its path does n
 ```text
 MiniApps/
 |- MiniApps.exe
-|- MiniApps/                 default mini-app packages and installed mini-apps
+|- MiniApps/                 installed mini-apps and shared modules
 |- Interface/                launcher interfaces
 |  `- default/
 |     `- index.html
-`- Data/                     runtime files and all private application state
-   |- WebView2/              WebView2 loader and managed-library XML documentation
-   |  `- UserData/           WebView2 profile
-   `- User/                  private and secure mini-app storage
+|- Data/                     runtime files and private application state
+|  |- BundledMiniApps/       bundled app archives applied on startup
+|  |- WebView2/              WebView2 loader and managed-library XML documentation
+|  |  `- UserData/           WebView2 profile
+|  `- User/                  private and secure mini-app storage
 `- Config/                   launcher configuration
    |- window-sizes.json
    |- launcher-interface.txt
-   `- Permissions/           permission files named after mini-apps
+   `- Permissions/           permission files keyed by app ID hash
 ```
 
 The uninstaller files `unins000.exe` and `unins000.dat` are stored in `Data`.
 
 ## Packaged content and offline updates
 
-The installer is fully offline: it updates the selected installation using only files inside `MiniAppsSetup.exe`.
+The installer updates the selected installation offline when .NET Desktop Runtime and WebView2 are already installed.
 
-- The Windows executable is published once. Inno Setup uses a separate clean staging directory containing that executable, runtime files, and packaged content from `DefaultContent/MiniApps` and `DefaultContent/Interface`. Local `Output/Windows` configuration, WebView2 profile, private data, custom apps and interfaces, and all `storage.json` files are excluded from the installer. Before Inno Setup runs, the build verifies that the executable, the default interface, and at least one mini-app manifest are present.
+- The Windows executable is published once. Inno Setup stages the same packaged content used by the portable output. The build excludes mini-app test and tool folders, source snapshots, public storage and runtime state. The staging directory also excludes local configuration, WebView2 profile, private data and custom apps or interfaces. Before Inno Setup runs, the build verifies that the executable, the default interface, and at least one bundled application archive are present.
 - Inno Setup writes into `Cache/Windows/installer-output`; `Output/Windows/MiniAppsSetup.exe` is replaced only after compilation succeeds. An interrupted publish restores saved configuration and WebView2 profile data on the next run.
-- An update refreshes built-in mini-app code and manifests while preserving `storage.json`; user-added mini-app folders and `.runtime` are kept. Each bundled interface subdirectory needs an `index.html`; `DefaultContent/Interface/default/index.html` is the bundled default. Packaged interface files are refreshed during an update, while additional custom interface folders are not removed.
+- Setup ships bundled archives in `Data/BundledMiniApps`. At startup the host validates and applies them through the normal package installer. It preserves public storage, user-added apps, permission decisions for retained capabilities, and eligible previous versions. Setup also refreshes packaged interfaces while preserving additional custom interface folders.
 - Runtime binaries and libraries are refreshed in `Data`; `Data/User` and `Data/WebView2/UserData` are preserved. `Config` is also preserved, including window size, selected interface, and mini-app permission settings. Imported ZIP and HTML packages are installed directly and are not retained as source copies.
 
 ## Dependencies
 
-The installer does not bundle .NET or WebView2. It accepts any installed x64 .NET Desktop Runtime with major version 8 or higher and offers the official download page only if none is found. The app uses the system Microsoft Edge WebView2 Runtime.
+Windows setup requires the x64 .NET 10 Desktop Runtime and Microsoft Edge
+WebView2 Runtime. It offers the relevant Microsoft download page when a
+dependency is missing. For an offline machine, prepare the standalone
+Microsoft installers separately.
 
 ## Versioning
 
-`build/version.properties` is the single source of truth: `APP_VERSION` is used by Android and the Windows installer, while `ANDROID_VERSION_CODE` is used by Android.
+`Build/version.properties` defines `APP_VERSION` for the Android package, the Windows executable, and the Windows installer. The launcher shows the version embedded in the running app. Android also uses `ANDROID_VERSION_CODE` for package updates.

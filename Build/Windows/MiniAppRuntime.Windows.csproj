@@ -1,17 +1,23 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows10.0.18362.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.18362.0</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>false</SelfContained>
     <PublishTrimmed>false</PublishTrimmed>
-    <RollForward>Major</RollForward>
+    <RollForward>LatestPatch</RollForward>
     <AssemblyName>MiniApps</AssemblyName>
+    <AppVersion>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\version.properties')), '(?m)^APP_VERSION=([^\r\n]*)').Groups[1].Value.Trim())</AppVersion>
+    <Version>$(AppVersion)</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
+  <Target Name="ValidateAppVersion" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(AppVersion)' == ''" Text="APP_VERSION is missing from Build/version.properties." />
+  </Target>
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3240.44" />
   </ItemGroup>
@@ -25,7 +31,14 @@
     <Compile Include="..\..\Code\Windows\**\*.cs" />
     <Content Include="..\..\Code\Framework\shared\web\runtime.js" Link="runtime.js" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
     <Content Include="..\..\Code\Framework\shared\launcher-runtime.js" Link="launcher-runtime.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\DefaultContent\Interface\**\index.html" Link="LauncherLocales\en\%(RecursiveDir)%(Filename)%(Extension)" CopyToPublishDirectory="Always" />
+    <Content Include="..\..\Ru\DefaultContent\Interface\**\index.html" Link="LauncherLocales\ru\%(RecursiveDir)%(Filename)%(Extension)" CopyToPublishDirectory="Always" />
+    <Content Include="..\Telegram\api-credentials.local.json" Condition="Exists('..\Telegram\api-credentials.local.json')" Link="TelegramPackage\api-credentials.local.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\DefaultContent\MiniApps\Modules\telegram\*" Link="TelegramPackage\module\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\DefaultContent\MiniApps\telegram-client\*" Link="TelegramPackage\client\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\DefaultContent\Interface\**\*" Link="Interface\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="..\..\DefaultContent\MiniApps\**\*" Link="MiniApps\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\DefaultContent\MiniApps\**\*"
+             Exclude="..\..\DefaultContent\MiniApps\**\tests\**;..\..\DefaultContent\MiniApps\**\tools\**;..\..\DefaultContent\MiniApps\**\source-snapshot.json;..\..\DefaultContent\MiniApps\**\storage.json;..\..\DefaultContent\MiniApps\**\storage.json.bak;..\..\DefaultContent\MiniApps\**\.runtime\**"
+             Link="MiniApps\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

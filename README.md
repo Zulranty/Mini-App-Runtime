@@ -107,7 +107,7 @@ const file = await mini.files.pick({
 
 await mini.share.text('Shopping list');
 
-await mini.ui.toast('Saved');
+await mini.ui.toast({ message: 'Saved' });
 ```
 
 A mini-app remains a normal HTML application, but it gains access to approved operating-system features.
@@ -250,71 +250,7 @@ Applications should not rely only on the platform name. Optional capabilities mu
 
 ## Quick Start
 
-A minimal application consists of two files:
-
-```text
-hello-app/
-├── manifest.json
-└── index.html
-```
-
-### `manifest.json`
-
-```json
-{
-  "id": "com.example.hello",
-  "name": "Hello App",
-  "version": "1.0.0",
-  "sdkVersion": 2,
-  "minRuntimeVersion": "1.4.0",
-  "entry": "index.html",
-  "description": "My first mini-app",
-  "permissions": ["storage"]
-}
-```
-
-### `index.html`
-
-```html
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1"
-  >
-  <title>Hello App</title>
-</head>
-<body>
-  <h1>My Application</h1>
-
-  <input id="text" placeholder="Enter some text">
-  <button id="save">Save</button>
-
-  <script>
-    const input = document.querySelector('#text');
-    const saveButton = document.querySelector('#save');
-
-    async function initialize() {
-      input.value =
-        await mini.storage.private.get('text') ?? '';
-    }
-
-    saveButton.addEventListener('click', async () => {
-      await mini.storage.private.set('text', input.value);
-      await mini.ui.toast('Saved');
-    });
-
-    initialize();
-  </script>
-</body>
-</html>
-```
-
-The runtime injects the JavaScript bridge automatically. No system script needs to be included manually.
-
-Place the files in a ZIP archive with `manifest.json` at the root, then import the archive through the launcher.
+Follow the [Android and Windows Quick Start](Docs/README.md#quick-start) to create a ZIP, import the app, and verify that a saved note survives reopening.
 
 ## Single-File HTML Applications
 
@@ -549,7 +485,7 @@ The Windows version uses the Microsoft Edge WebView2 Runtime installed on the sy
 Requirements:
 
 * JDK 17 or newer;
-* Android SDK Platform 35;
+* Android SDK Platform 36;
 * the Gradle Wrapper included in the repository.
 
 ```bat
@@ -562,11 +498,13 @@ Output:
 Output/Android/MiniApps.apk
 ```
 
+Use `Build/Scripts/BuildAndroid.cmd Bundle` with release signing credentials to build the Android App Bundle.
+
 ### Windows
 
 Requirements:
 
-* .NET SDK 8 or newer;
+* .NET SDK 10 or newer;
 * Inno Setup 6;
 * Microsoft Edge WebView2 Runtime for running the application.
 
@@ -592,13 +530,13 @@ build\Scripts\BuildAll.cmd
 * [`Docs/mini-app-format.md`](Docs/mini-app-format.md) — application format and manifest;
 * [`Docs/runtime-api.md`](Docs/runtime-api.md) — the `mini.*` JavaScript API;
 * [`Docs/interface-module.md`](Docs/interface-module.md) — creating launcher interfaces;
-* [`Docs/mini-app-management.md`](Docs/mini-app-management.md) — installation, sharing, and rollback;
-* [`Docs/launcher-management.md`](Docs/launcher-management.md) — trusted launcher operations;
+* [`Docs/mini-app-management.md`](Docs/mini-app-management.md) — package updates, rollback, and permissions;
+* [`Docs/launcher-management.md`](Docs/launcher-management.md) — using the launcher, built-in apps, and themes;
 * [`Docs/security-model.md`](Docs/security-model.md) — security model;
 * [`Docs/windows-build.md`](Docs/windows-build.md) — Windows build details;
 * [`Docs/windows-distribution.md`](Docs/windows-distribution.md) — Windows distribution.
 
-When working with AI, users can provide a combined documentation file or only the sections relevant to the application being created.
+When working with AI, provide the [combined documentation](Docs/Documentation.txt) or the sections relevant to the application.
 
 ## Current Status
 

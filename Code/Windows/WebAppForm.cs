@@ -10,18 +10,23 @@ namespace MiniAppRuntime.Windows;
 
 internal sealed class WebAppView : UserControl
 {
-    private const string RuntimeVersion = "1.5.0";
+    internal const string RuntimeVersion = "1.5.25";
 #if DEBUG
     private static readonly bool PeerTransportEnabled = true;
 #else
     private static readonly bool PeerTransportEnabled = false;
 #endif
     private readonly MiniManifest manifest;
+    private readonly string preferredLanguage = AppLanguage.Preference();
     private readonly string directory;
+    private readonly MiniAppContent content;
+    private readonly string appHost;
     private readonly WebView2 web = new() { Dock = DockStyle.Fill };
-    private readonly NativeTopBar topBar = new() { Dock = DockStyle.Top, Visible = false };
+    private readonly NativeTopBar topBar;
     private readonly PermissionStore permissions;
     private readonly SecureStorageStore secureStorage;
+    private readonly MiniAppFunctions functions;
+    private readonly string launchReason;
     private readonly LocalDeviceService localDevices = new();
     private readonly Dictionary<string, string> files = [];
     private readonly Dictionary<string, string> directories = [];
@@ -29,20 +34,34 @@ internal sealed class WebAppView : UserControl
     private readonly HashSet<string> readOnlyFiles = [];
     private readonly Dictionary<string, RuntimeTimer> timers = [];
     private readonly object timersLock = new();
-    private readonly object storageLock = new();
+    private static object StorageLock => MiniStore.InstallLock;
     private readonly Action onExit;
     private readonly WindowsFileSaveService fileSave = new(new WinFormsFileSaveDialog());
+    private readonly WebStreams streams;
     private WindowsShareService? share;
     private readonly Action<string, JsonNode> peerEvent;
     private bool backInProgress;
     private long lastUserGestureAt;
     private string? lastNetworkState;
 
-    public WebAppView(MiniManifest manifest, string directory, Action onExit)
+    public WebAppView(MiniManifest manifest, string directory, Action onExit, string launchReason = "normal", Action? completeLaunch = null)
     {
+        content = BuiltInMiniApps.ResolveContent(manifest, directory);
+        manifest = content.Manifest;
+        permissions = new PermissionStore(manifest);
+        manifest = manifest.Localize(preferredLanguage);
         this.manifest = manifest; this.directory = directory; this.onExit = onExit;
-        permissions = new PermissionStore(manifest.Id, manifest.Name);
+        var idKey = MiniStore.IdKey(manifest.Id);
+        appHost = $"app.{idKey[..32]}.{idKey[32..]}.miniapps.invalid";
+        this.launchReason = launchReason;
         secureStorage = new SecureStorageStore(manifest.Id);
+        streams = new WebStreams(Emit);
+        functions = BuiltInMiniApps.Configure(manifest, secureStorage, permissions, this, OwnerWindow,
+            RequireUserGestureAsync, streams, launchReason, completeLaunch);
+        topBar = functions.TopBar ?? new NativeTopBar();
+        topBar.Dock = DockStyle.Top;
+        topBar.Visible = false;
+        if (functions.AllowExternalDrop) web.AllowExternalDrop = true;
         peerEvent = OnPeerEvent;
         Controls.Add(web); Controls.Add(topBar);
         topBar.Apply(TopBarConfiguration.Default(manifest.Name));
@@ -53,7 +72,8 @@ internal sealed class WebAppView : UserControl
         lastNetworkState = NetworkStatus().ToJsonString();
         System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += NetworkChanged;
         topBar.ActionRequested += NotifyTopBarAction;
-        Disposed += (_, _) => { System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged -= NetworkChanged; PeerManager.Instance.Unsubscribe(manifest.Id, peerEvent); localDevices.Dispose(); ClearTimers(); share?.Dispose(); };
+        MiniStore.RegisterView(manifest.Id);
+        Disposed += (_, _) => { MiniStore.UnregisterView(manifest.Id); System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged -= NetworkChanged; PeerManager.Instance.Unsubscribe(manifest.Id, peerEvent); localDevices.Dispose(); ClearTimers(); share?.Dispose(); streams.Dispose(); functions.Dispose(); };
         Load += (_, _) => SetWindowTitle(manifest.Name);
         Load += async (_, _) => await InitializeAsync();
     }
@@ -69,32 +89,56 @@ internal sealed class WebAppView : UserControl
             }
             await web.EnsureCoreWebView2Async(await MiniStore.GetWebViewEnvironmentAsync());
             web.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-            // Each WebView sees only its own mini-app directory, matching Android's miniapp://<id>/ isolation.
-            web.CoreWebView2.SetVirtualHostNameToFolderMapping("miniapp.local", directory, CoreWebView2HostResourceAccessKind.DenyCors);
+            web.CoreWebView2.SetVirtualHostNameToFolderMapping(appHost, content.Directory, CoreWebView2HostResourceAccessKind.DenyCors);
             web.CoreWebView2.SetVirtualHostNameToFolderMapping("interface.local", MiniStore.ActiveLauncherInterfaceRoot, CoreWebView2HostResourceAccessKind.DenyCors);
+            web.CoreWebView2.AddWebResourceRequestedFilter(ModuleScripts.Origin + "/*", CoreWebView2WebResourceContext.All,
+                CoreWebView2WebResourceRequestSourceKinds.All);
+            web.CoreWebView2.AddWebResourceRequestedFilter(WebStreams.Origin + "/*", CoreWebView2WebResourceContext.All,
+                CoreWebView2WebResourceRequestSourceKinds.All);
+            web.CoreWebView2.WebResourceRequested += async (_, e) =>
+            {
+                if (e.Request.Uri.StartsWith(WebStreams.Origin + "/", StringComparison.Ordinal))
+                {
+                    try { await streams.ServeAsync(web.CoreWebView2.Environment, e); }
+                    catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException) { }
+                    return;
+                }
+                var content = e.Request.Method == "GET"
+                    ? this.content.OpenModule is { } openModule
+                        ? openModule(e.Request.Uri)
+                        : ModuleScripts.Open(MiniStore.Root, e.Request.Uri)
+                    : null;
+                e.Response = web.CoreWebView2.Environment.CreateWebResourceResponse(content ?? Stream.Null,
+                    content is null ? 404 : 200, content is null ? "Not Found" : "OK",
+                    "Content-Type: application/javascript; charset=utf-8\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff");
+            };
             var runtime = await File.ReadAllTextAsync(Path.Combine(MiniStore.ResourceRoot, "runtime.js"));
             await web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(runtime);
-            await web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync("window.addEventListener('DOMContentLoaded',()=>{const css=document.createElement('link');css.rel='stylesheet';css.href='https://interface.local/appbar.css';document.head.append(css);const script=document.createElement('script');script.src='https://interface.local/appbar.js';document.head.append(script);});");
+            if (content.OpenModule is null)
+                await web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync("window.addEventListener('DOMContentLoaded',()=>{const css=document.createElement('link');css.rel='stylesheet';css.href='https://interface.local/appbar.css';document.head.append(css);const script=document.createElement('script');script.src='https://interface.local/appbar.js';document.head.append(script);});");
             web.CoreWebView2.WebMessageReceived += (_, e) =>
             {
-                if (TrustedSource(e.Source, "miniapp.local")) HandleMessage(e.TryGetWebMessageAsString());
+                if (TrustedSource(e.Source, appHost)) HandleMessage(e.TryGetWebMessageAsString());
             };
             web.CoreWebView2.NavigationStarting += (_, e) =>
             {
-                if (!TrustedSource(e.Uri, "miniapp.local")) e.Cancel = true;
+                if (!TrustedSource(e.Uri, appHost)) e.Cancel = true;
             };
-            web.CoreWebView2.Navigate($"https://miniapp.local/{manifest.Entry}");
+            web.CoreWebView2.FrameNavigationStarting += (_, e) => e.Cancel = true;
+            web.CoreWebView2.NewWindowRequested += (_, e) => e.Handled = true;
+            var entry = string.Join('/', manifest.Entry.Replace('\\', '/').Split('/').Select(Uri.EscapeDataString));
+            web.CoreWebView2.Navigate($"https://{appHost}/{entry}");
         }
         catch (Exception error) { MessageBox.Show(FindForm(), "Не удалось запустить WebView2. Установите Microsoft Edge WebView2 Runtime.\n\n" + error.Message, "Mini App Runtime", MessageBoxButtons.OK, MessageBoxIcon.Error); onExit(); }
     }
 
-    private static bool TrustedSource(string source, string host) =>
+    internal static bool TrustedSource(string source, string host) =>
         Uri.TryCreate(source, UriKind.Absolute, out var uri) &&
         uri.Scheme == Uri.UriSchemeHttps && uri.IsDefaultPort &&
         string.IsNullOrEmpty(uri.UserInfo) &&
         string.Equals(uri.Host, host, StringComparison.OrdinalIgnoreCase);
 
-    private void HandleMessage(string raw)
+    private async void HandleMessage(string raw)
     {
         JsonObject? request;
         try { request = JsonNode.Parse(raw)?.AsObject(); } catch { return; }
@@ -103,18 +147,38 @@ internal sealed class WebAppView : UserControl
         {
             var method = request?["method"]?.GetValue<string>() ?? throw new ApiError("invalid_request", "method is required");
             var parameters = request?["params"]?.AsObject() ?? new JsonObject();
+            if (functions.Handlers.TryGetValue(method, out var function))
+            {
+                var response = await function(parameters);
+                if (!IsDisposed) Respond(id, true, response, null, null);
+                return;
+            }
+            if (method.StartsWith("streams.", StringComparison.Ordinal))
+            {
+                if (!functions.EnableStreams) throw new ApiError("method_not_found", "Unknown method");
+                if (method is "streams.save" or "streams.saveInDirectory")
+                {
+                    await RequirePermissionAsync("files.save");
+                    string? directory = null;
+                    if (method == "streams.saveInDirectory")
+                    {
+                        await RequirePermissionAsync("files.directory");
+                        directory = DirectoryFor(new JsonObject { ["id"] = parameters["directoryId"]?.DeepClone() });
+                    }
+                    _ = SaveStreamAsync(id, parameters, directory);
+                    return;
+                }
+            }
             if (method.StartsWith("notifications.") || method is "haptics.impact" or "haptics.selection" or "haptics.notification") throw new ApiError("feature_unavailable", "Feature is unavailable on this platform");
-            // The WebView2 host does not reliably surface an HTML button click as a
-            // native MouseDown event.  Local discovery is explicitly requested by the
-            // mini-app permission dialog, so do not reject that dialog before it can
-            // be shown. Other permission prompts still retain the gesture safeguard.
+            // Discovery already uses its own native permission confirmation.
             var requestedPermission = method == "permissions.request" ? parameters["permission"]?.GetValue<string>() : null;
-            if ((method == "permissions.request" && !string.Equals(requestedPermission, "local.peers", StringComparison.Ordinal)) || method is "files.pick" or "files.pickMultiple" or "files.pickDirectory" or "clipboard.readText" or "system.openUrl" or "system.openFile" or "system.openSettings") RequireUserGesture();
+            if ((method == "permissions.request" && !string.Equals(requestedPermission, "local.peers", StringComparison.Ordinal)) || method is "permissions.openSettings" or "files.pick" or "files.pickMultiple" or "files.pickDirectory" or "clipboard.readText" or "system.openUrl" or "system.openFile" or "system.openSettings") await RequireUserGestureAsync();
+            if (IsDisposed) return;
             if (method == "permissions.request") { Respond(id, true, RequestPermission(parameters), null, null); return; }
             if (method.StartsWith("peers.", StringComparison.Ordinal))
             {
                 if (!PeerTransportEnabled) throw new ApiError("feature_unavailable", "Peer transport is unavailable in release builds");
-                RequirePermission("local.peers");
+                await RequirePermissionAsync("local.peers");
                 PeerManager.Instance.Subscribe(manifest.Id, peerEvent);
                 if (method == "peers.connect") { _ = ConnectPeerAsync(id, parameters); return; }
                 var peerResult = method switch
@@ -132,7 +196,7 @@ internal sealed class WebAppView : UserControl
                 Respond(id, true, peerResult, null, null); return;
             }
             var permission = PermissionFor(method);
-            if (permission is not null && !IsReadOnlyAppFileRead(method, parameters)) RequirePermission(permission);
+            if (permission is not null && !IsReadOnlyAppFileRead(method, parameters)) await RequirePermissionAsync(permission);
             if (method == "network.request") { _ = NetworkRequestAsync(id, parameters); return; }
             if (method is "network.discoverDevices" or "network.requestDevice") { _ = LocalDeviceAsync(id, method, parameters); return; }
             JsonNode? result = method switch
@@ -140,9 +204,11 @@ internal sealed class WebAppView : UserControl
                 "app.getInfo" => new JsonObject { ["id"] = manifest.Id, ["name"] = manifest.Name, ["version"] = manifest.Version, ["sdkVersion"] = manifest.SdkVersion },
                 "app.getAppInfo" => MiniStore.AppInfo(manifest, directory),
                 "app.getRuntimeVersion" => RuntimeVersion,
-                "app.getLaunchParams" => new JsonObject { ["reason"] = "normal" },
+                "app.getLaunchParams" => LaunchParameters(),
+                "locale.get" => LocaleInfo(),
                 "runtime.getCapabilities" => Capabilities(),
                 "runtime.supports" => Supported(parameters),
+                "logs.write" => WriteLog(parameters),
                 "navigation.setBackEnabled" => SetBackEnabled(parameters),
                 "navigation.getState" => new JsonObject { ["backEnabled"] = backEnabled },
                 "permissions.query" => PermissionState(parameters),
@@ -152,6 +218,9 @@ internal sealed class WebAppView : UserControl
                 "secureStorage.remove" => secureStorage.Remove(Key(parameters)),
                 "secureStorage.keys" => secureStorage.Keys(),
                 "secureStorage.clear" => secureStorage.Clear(),
+                "streams.open" => streams.Open(parameters),
+                "streams.close" => streams.Close(parameters),
+                "streams.reply" => streams.Reply(parameters),
                 "app.setWindowTitle" => SetWindowTitle(parameters),
                 "app.close" => CloseApp(),
                 "ui.setTopBar" => SetTopBar(parameters),
@@ -166,7 +235,7 @@ internal sealed class WebAppView : UserControl
                 "storage.setSchemaVersion" => StorageSetSchema(parameters),
                 "storage.getUsage" => StorageUsage(parameters),
                 "storage.transaction" => StorageTransaction(parameters),
-                "device.getInfo" => new JsonObject { ["platform"] = "windows", ["windowsVersion"] = Environment.OSVersion.VersionString, ["appVersion"] = "1.0.0", ["locale"] = System.Globalization.CultureInfo.CurrentUICulture.Name, ["screenWidth"] = Screen.FromControl(this).Bounds.Width, ["screenHeight"] = Screen.FromControl(this).Bounds.Height, ["isDarkTheme"] = false },
+                "device.getInfo" => new JsonObject { ["platform"] = "windows", ["windowsVersion"] = Environment.OSVersion.VersionString, ["appVersion"] = Application.ProductVersion, ["locale"] = System.Globalization.CultureInfo.CurrentUICulture.Name, ["screenWidth"] = Screen.FromControl(this).Bounds.Width, ["screenHeight"] = Screen.FromControl(this).Bounds.Height, ["isDarkTheme"] = false },
                 "clipboard.write" => WriteClipboard(parameters),
                 "clipboard.readText" => ReadClipboard(),
                 "clipboard.getAvailableFormats" => ClipboardFormats(),
@@ -183,8 +252,10 @@ internal sealed class WebAppView : UserControl
                 "files.listAppDirectory" => ListAppDirectory(parameters),
                 "files.pickDirectory" => PickDirectory(),
                 "files.listDirectory" => ListDirectory(parameters),
+                "files.releaseDirectory" => ReleaseDirectory(parameters),
                 "files.openInDirectory" => DirectoryFile(parameters, false),
                 "files.createInDirectory" => DirectoryFile(parameters, true),
+                "files.writeChecked" => WriteCheckedFile(parameters),
                 "files.writeChunk" => WriteChunk(parameters),
                 "files.flush" => null,
                 "files.persistDirectory" => PersistDirectory(parameters),
@@ -218,9 +289,11 @@ internal sealed class WebAppView : UserControl
     }
 
     private JsonNode? CloseApp() { BeginInvoke(onExit); return null; }
-    private void RequireUserGesture()
+    private async Task RequireUserGestureAsync()
     {
-        if (Environment.TickCount64 - lastUserGestureAt > 1_000) throw new ApiError("user_gesture_required", "A recent user gesture is required");
+        if (lastUserGestureAt != 0 && Environment.TickCount64 - lastUserGestureAt <= 1_000) return;
+        var active = await web.CoreWebView2.ExecuteScriptAsync("this.__miniRecentUserInput?.() === true");
+        if (active != "true") throw new ApiError("user_gesture_required", "A recent user gesture is required");
     }
     private JsonObject NetworkStatus() => new() { ["online"] = System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable(), ["type"] = "unknown", ["metered"] = false };
     private void NetworkChanged(object? sender, EventArgs args)
@@ -257,18 +330,39 @@ internal sealed class WebAppView : UserControl
         catch (ApiError error) { if (!IsDisposed) BeginInvoke(() => Respond(requestId, false, null, error.Code, error.Message)); }
         catch { if (!IsDisposed) BeginInvoke(() => Respond(requestId, false, null, "peer_connection_failed", "Could not connect to peer")); }
     }
+    private JsonObject LaunchParameters() =>
+        new() { ["reason"] = launchReason, ["locale"] = LocaleInfo() };
+
+    private JsonNode? WriteLog(JsonObject parameters)
+    {
+        functions.BeforeLogWrite?.Invoke();
+        return RuntimeLog.Write(manifest, parameters);
+    }
+
+    private JsonObject LocaleInfo() => new() { ["preferred"] = preferredLanguage, ["resolved"] = manifest.Language };
+
     private JsonNode Capabilities()
     {
         var result = new JsonObject
         {
         ["runtimeVersion"] = RuntimeVersion, ["sdkVersion"] = 2, ["platform"] = "windows",
-        ["methods"] = new JsonArray("app.getInfo", "app.getAppInfo", "app.getLaunchParams", "storage.get", "storage.set", "storage.getMany", "storage.setMany", "storage.transaction", "navigation.setBackEnabled", "navigation.getState", "runtime.getCapabilities", "runtime.supports", "permissions.query", "permissions.request", "permissions.openSettings", "secureStorage.get", "secureStorage.set", "secureStorage.remove", "secureStorage.keys", "secureStorage.clear", "network.getStatus", "network.request", "network.discoverDevices", "network.requestDevice", "clipboard.readText", "clipboard.getAvailableFormats", "files.pickMultiple", "files.getInfo", "files.readChunk", "files.readTextChunk", "files.releaseMany", "files.getAppDirectory", "files.listAppDirectory", "files.pickDirectory", "files.listDirectory", "files.openInDirectory", "files.createInDirectory", "files.writeChunk", "files.flush", "files.persistDirectory", "files.restoreDirectory", "files.forgetDirectory", "ui.alert", "ui.confirm", "ui.prompt", "ui.toast", "system.canOpenUrl", "system.openUrl", "system.openFile", "system.openSettings", "peers.startDiscovery", "peers.stopDiscovery", "peers.list", "peers.connect", "peers.disconnect", "peers.connections", "peers.openChannel", "peers.closeChannel", "peers.sendMessage"),
-        ["features"] = new JsonObject { ["navigation.backRequested"] = true, ["storage.transactions"] = true, ["backup.restore"] = false, ["secureStorage"] = true, ["network.request"] = true, ["network.statusChanged"] = true, ["notifications.schedule"] = false, ["files.readChunk"] = true, ["files.pickMultiple"] = true, ["files.directory"] = true, ["clipboard.readText"] = true, ["ui.nativeDialogs"] = true, ["haptics"] = false, ["system.openUrl"] = true, ["peers"] = PeerTransportEnabled, ["peers.discovery"] = PeerTransportEnabled },
+        ["methods"] = new JsonArray("app.getInfo", "app.getAppInfo", "app.getLaunchParams", "app.getRuntimeVersion", "app.close", "app.setWindowTitle", "device.getInfo", "ui.setTopBar", "files.pick", "storage.get", "storage.set", "storage.getMany", "storage.setMany", "storage.remove", "storage.clear", "storage.keys", "storage.getSchemaVersion", "storage.setSchemaVersion", "storage.getUsage", "storage.transaction", "navigation.setBackEnabled", "navigation.getState", "runtime.getCapabilities", "runtime.supports", "permissions.query", "permissions.request", "permissions.openSettings", "secureStorage.get", "secureStorage.set", "secureStorage.remove", "secureStorage.keys", "secureStorage.clear", "network.getStatus", "network.request", "network.discoverDevices", "network.requestDevice", "clipboard.write", "clipboard.readText", "clipboard.getAvailableFormats", "files.pickMultiple", "files.readText", "files.readBase64", "files.release", "files.saveText", "files.saveBase64", "share.text", "share.file", "files.getInfo", "files.readChunk", "files.readTextChunk", "files.releaseMany", "files.getAppDirectory", "files.listAppDirectory", "files.pickDirectory", "files.listDirectory", "files.releaseDirectory", "files.openInDirectory", "files.createInDirectory", "files.writeChunk", "files.flush", "files.persistDirectory", "files.restoreDirectory", "files.forgetDirectory", "ui.alert", "ui.confirm", "ui.prompt", "ui.toast", "system.canOpenUrl", "system.openUrl", "system.openFile", "system.openSettings", "peers.startDiscovery", "peers.stopDiscovery", "peers.list", "peers.connect", "peers.disconnect", "peers.connections", "peers.openChannel", "peers.closeChannel", "peers.sendMessage"),
+        ["features"] = new JsonObject { ["ui.hideTopBar"] = true, ["navigation.backRequested"] = true, ["storage.transactions"] = true, ["backup.restore"] = false, ["secureStorage"] = true, ["network.request"] = true, ["network.statusChanged"] = true, ["notifications.schedule"] = false, ["files.readChunk"] = true, ["files.pickMultiple"] = true, ["files.directory"] = true, ["clipboard.readText"] = true, ["ui.nativeDialogs"] = true, ["haptics"] = false, ["system.openUrl"] = true, ["peers"] = PeerTransportEnabled, ["peers.discovery"] = PeerTransportEnabled },
         ["limits"] = new JsonObject { ["storageBytes"] = 5 * 1024 * 1024, ["fileWriteBytes"] = 10 * 1024 * 1024, ["shareFileBytes"] = 10 * 1024 * 1024, ["networkRequestBytes"] = NetworkRequestValidator.MaxRequestBytes, ["networkResponseBytes"] = NetworkRequestValidator.MaxResponseBytes, ["networkRedirects"] = 5 }
         };
+        var methods = result["methods"]!.AsArray();
+        methods.Add("locale.get");
+        methods.Add("logs.write");
+        methods.Add("files.writeChecked");
+        foreach (var name in functions.Handlers.Keys) methods.Add(name);
+        if (functions.EnableStreams)
+        {
+            methods.Add("streams.saveInDirectory");
+            methods.Add("streams.open");
+            methods.Add("streams.save");
+        }
         if (!PeerTransportEnabled)
         {
-            var methods = result["methods"]!.AsArray();
             for (var index = methods.Count - 1; index >= 0; index--)
                 if (methods[index]?.GetValue<string>() is { } methodName && methodName.StartsWith("peers.", StringComparison.Ordinal))
                     methods.RemoveAt(index);
@@ -280,6 +374,16 @@ internal sealed class WebAppView : UserControl
         var name = parameters["name"]?.GetValue<string>() ?? "";
         var capabilities = Capabilities();
         return capabilities["methods"]!.AsArray().Any(item => item?.GetValue<string>() == name) || capabilities["features"]?[name]?.GetValue<bool>() == true;
+    }
+    private async Task SaveStreamAsync(string requestId, JsonObject parameters, string? directory)
+    {
+        try
+        {
+            var result = await streams.SaveAsync(OwnerWindow(), parameters, directory);
+            if (!IsDisposed) Respond(requestId, true, result, null, null);
+        }
+        catch (ApiError error) { if (!IsDisposed) Respond(requestId, false, null, error.Code, error.Message); }
+        catch (Exception) { if (!IsDisposed) Respond(requestId, false, null, "file_write_failed", "Could not save file"); }
     }
     private async Task NetworkRequestAsync(string id, JsonObject parameters)
     {
@@ -369,6 +473,7 @@ internal sealed class WebAppView : UserControl
     }
     private void NotifyTopBarAction(string actionId)
     {
+        lastUserGestureAt = Environment.TickCount64;
         var script = $"window.__miniRuntimeEvent&&window.__miniRuntimeEvent('ui.topBarAction',{JsonSerializer.Serialize(actionId)});";
         web.CoreWebView2?.ExecuteScriptAsync(script);
     }
@@ -448,10 +553,27 @@ internal sealed class WebAppView : UserControl
     }
     private JsonNode ListDirectory(JsonObject p)
     {
-        var root = DirectoryFor(p); var limit = Math.Clamp(p["limit"]?.GetValue<int>() ?? 100, 1, 200); var entries = new JsonArray();
-        foreach (var path in Directory.EnumerateFileSystemEntries(root).Take(limit)) { var directory = Directory.Exists(path); var name = Path.GetFileName(path); var node = new JsonObject { ["name"] = name, ["directory"] = directory, ["mimeType"] = directory ? "inode/directory" : "application/octet-stream", ["size"] = directory ? 0 : new FileInfo(path).Length }; if (directory) { var id="runtime-directory-"+Guid.NewGuid().ToString("N");directories[id]=path;node["id"]=id; } else { var id="runtime-file-"+Guid.NewGuid().ToString("N");files[id]=path;node["id"]=id; } entries.Add(node); }
-        return new JsonObject { ["entries"] = entries, ["nextCursor"] = null };
+        var root = DirectoryFor(p);
+        var limit = Math.Clamp(p["limit"]?.GetValue<int>() ?? 100, 1, 200);
+        var offset = Math.Max(0, p["cursor"]?.GetValue<int>() ?? 0);
+        var page = new DirectoryInfo(root).EnumerateFileSystemInfos()
+            .Where(item => !item.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .Skip(offset).Take(limit + 1).ToArray();
+        var entries = new JsonArray();
+        foreach (var item in page.Take(limit))
+        {
+            var id = "runtime-entry-" + Guid.NewGuid().ToString("N");
+            var directory = item is DirectoryInfo;
+            if (directory) directories[id] = item.FullName;
+            else files[id] = item.FullName;
+            entries.Add(new JsonObject { ["id"] = id, ["name"] = item.Name, ["directory"] = directory,
+                ["mimeType"] = directory ? "inode/directory" : "application/octet-stream",
+                ["size"] = item is FileInfo file ? file.Length : 0 });
+        }
+        return new JsonObject { ["entries"] = entries, ["nextCursor"] = page.Length > limit ? offset + limit : (int?)null };
     }
+    private JsonNode? ReleaseDirectory(JsonObject p) { directories.Remove(Key(p)); return null; }
     private JsonNode DirectoryFile(JsonObject p, bool create)
     {
         var root = DirectoryFor(p); var relative = Relative(p["path"]?.GetValue<string>() ?? throw new ApiError("invalid_params", "path is required")); var path = Path.GetFullPath(Path.Combine(root, relative)); if (!path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new ApiError("invalid_params", "Invalid relative path");
@@ -462,6 +584,12 @@ internal sealed class WebAppView : UserControl
     {
         if (readOnlyFiles.Contains(Key(p))) throw new ApiError("file_read_only", "Application files are read-only");
         var data = p["data"]?.GetValue<string>() ?? throw new ApiError("invalid_params", "data is required"); byte[] bytes; try { bytes = Convert.FromBase64String(data); } catch { throw new ApiError("invalid_params", "Invalid base64"); } if (bytes.Length > 1024 * 1024) throw new ApiError("file_too_large", "Chunk is too large"); using var stream = new FileStream(FileFor(p), FileMode.Append, FileAccess.Write, FileShare.None); stream.Write(bytes); stream.Flush(true); return null;
+    }
+    private JsonNode? WriteCheckedFile(JsonObject parameters)
+    {
+        var name = Relative(parameters["path"]?.GetValue<string>() ?? "");
+        CheckedFileWrite.Write(DirectoryFor(parameters), name, parameters);
+        return null;
     }
     private JsonNode? PersistDirectory(JsonObject p) { var name=Relative(p["name"]?.GetValue<string>() ?? throw new ApiError("invalid_params","name is required")); var saved=DirectoryStore();saved[name]=DirectoryFor(p);SaveDirectoryStore(saved);return null; }
     private JsonNode? RestoreDirectory(JsonObject p) { var name=Relative(p["name"]?.GetValue<string>() ?? throw new ApiError("invalid_params","name is required"));var path=DirectoryStore()[name]?.GetValue<string>();if(path is null||!Directory.Exists(path))return null;var id="runtime-directory-"+Guid.NewGuid().ToString("N");directories[id]=path;return new JsonObject{{"id",id},{"name",name}}; }
@@ -525,7 +653,7 @@ internal sealed class WebAppView : UserControl
     private enum StorageOperation { Get, Set, Remove, Clear, Keys }
     private JsonNode? Storage(JsonObject p, StorageOperation operation)
     {
-        lock (storageLock)
+        lock (StorageLock)
         {
             var path = StoragePath(p); var data = ReadStorage(path); var key = operation is StorageOperation.Clear or StorageOperation.Keys ? "" : Key(p);
             switch (operation)
@@ -539,24 +667,38 @@ internal sealed class WebAppView : UserControl
             }
         }
     }
-    private string StoragePath(JsonObject p) => p["public"]?.GetValue<bool>() == true || p["scope"]?.GetValue<string>() == "public" ? Path.Combine(directory, "storage.json") : Path.Combine(MiniStore.PrivateRoot, manifest.Id + ".json");
+    private string StoragePath(JsonObject p) => p["public"]?.GetValue<bool>() == true || p["scope"]?.GetValue<string>() == "public" ? Path.Combine(directory, "storage.json") : MiniStore.PrivateStoragePath(manifest.Id);
     private static JsonObject ReadStorage(string path)
     {
-        if (!File.Exists(path)) return new JsonObject();
-        try { return JsonNode.Parse(File.ReadAllText(path))?.AsObject() ?? new JsonObject(); }
-        catch { var backup = path + ".bak"; try { var data = JsonNode.Parse(File.ReadAllText(backup))?.AsObject() ?? throw new InvalidDataException(); Save(path, data, false); return data; } catch { throw new ApiError("storage_corrupted", "Storage data is corrupted"); } }
+        if (!File.Exists(path) && !File.Exists(path + ".bak")) return new JsonObject();
+        try { return JsonNode.Parse(File.ReadAllText(path))?.AsObject() ?? throw new InvalidDataException(); }
+        catch (Exception error) when (error is IOException or JsonException or InvalidOperationException)
+        {
+            JsonObject recovered;
+            try { recovered = JsonNode.Parse(File.ReadAllText(path + ".bak"))?.AsObject() ?? throw new InvalidDataException(); }
+            catch (Exception backupError) when (backupError is IOException or JsonException or InvalidOperationException)
+            {
+                throw new ApiError("storage_corrupted", "Storage data is corrupted");
+            }
+            Save(path, recovered, false);
+            return recovered;
+        }
     }
-    private static void Save(string path, JsonObject data, bool backup = true) { var raw = data.ToJsonString(new JsonSerializerOptions { WriteIndented = true }); if (Encoding.UTF8.GetByteCount(raw) > 5 * 1024 * 1024) throw new ApiError("storage_limit_exceeded", "Storage limit exceeded"); Directory.CreateDirectory(Path.GetDirectoryName(path)!); var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp"; try { File.WriteAllText(temp, raw, Encoding.UTF8); using (var stream = new FileStream(temp, FileMode.Open, FileAccess.Read, FileShare.Read)) stream.Flush(true); if (backup && File.Exists(path)) File.Copy(path, path + ".bak", true); File.Move(temp, path, true); } finally { if (File.Exists(temp)) File.Delete(temp); } }
-    private JsonNode StorageGetMany(JsonObject p) { lock (storageLock) { var data=ReadStorage(StoragePath(p)); var output=new JsonObject(); foreach(var key in p["keys"]?.AsArray() ?? []) if(key?.GetValue<string>() is { Length: > 0 } name && data[name] is { } value) output[name]=value.DeepClone(); return output; } }
-    private JsonNode? StorageSetMany(JsonObject p) { lock(storageLock) { var path=StoragePath(p); var data=ReadStorage(path); foreach(var item in p["values"]?.AsObject() ?? []) data[item.Key]=item.Value?.DeepClone(); Save(path,data); return null; } }
-    private JsonNode StorageSchema(JsonObject p) { lock(storageLock) return ReadStorage(StoragePath(p))["__mini_schema_version"]?.GetValue<int>() ?? 0; }
-    private JsonNode? StorageSetSchema(JsonObject p) { var version=p["value"]?.GetValue<int>() ?? -1; if(version<0) throw new ApiError("invalid_params","schema version must be non-negative"); lock(storageLock){var path=StoragePath(p);var data=ReadStorage(path);data["__mini_schema_version"]=version;Save(path,data);return null;} }
-    private JsonNode StorageUsage(JsonObject p) { lock(storageLock){var path=StoragePath(p);return new JsonObject { ["usedBytes"] = File.Exists(path) ? new FileInfo(path).Length : 0, ["limitBytes"] = 5 * 1024 * 1024 };} }
-    private JsonNode? StorageTransaction(JsonObject p) { var scope=p["scope"]?.GetValue<string>() ?? "private"; if(scope is not ("private" or "public"))throw new ApiError("invalid_params","scope must be private or public"); lock(storageLock){var path=StoragePath(new JsonObject{{"scope",scope}});var data=ReadStorage(path);try{foreach(var raw in p["operations"]?.AsArray() ?? throw new ApiError("invalid_params","operations is required")){var op=raw?.AsObject()??throw new ApiError("invalid_params","operation must be object");switch(op["type"]?.GetValue<string>()){case "set": data[Key(op)]=op["value"]?.DeepClone();break;case "remove":data.Remove(Key(op));break;case "clear":data=new JsonObject();break;case "setSchemaVersion":var value=op["value"]?.GetValue<int>()??-1;if(value<0)throw new ApiError("invalid_params","schema version must be non-negative");data["__mini_schema_version"]=value;break;default:throw new ApiError("invalid_params","Unknown storage operation");}}Save(path,data);return null;}catch(ApiError){throw;}catch(Exception){throw new ApiError("storage_transaction_failed","Transaction was not applied");}} }
-    private void RequirePermission(string permission)
+    private static void Save(string path, JsonObject data, bool backup = true) { var raw = data.ToJsonString(new JsonSerializerOptions { WriteIndented = true }); if (Encoding.UTF8.GetByteCount(raw) > 5 * 1024 * 1024) throw new ApiError("storage_limit_exceeded", "Storage limit exceeded"); Directory.CreateDirectory(Path.GetDirectoryName(path)!); var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp"; try { File.WriteAllText(temp, raw, Encoding.UTF8); using (var stream = new FileStream(temp, FileMode.Open, FileAccess.Read, FileShare.Read)) stream.Flush(true); if (backup && File.Exists(path)) File.Replace(temp, path, path + ".bak"); else File.Move(temp, path, true); } finally { if (File.Exists(temp)) File.Delete(temp); } }
+    private JsonNode StorageGetMany(JsonObject p) { lock (StorageLock) { var data=ReadStorage(StoragePath(p)); var output=new JsonObject(); foreach(var key in p["keys"]?.AsArray() ?? []) if(key?.GetValue<string>() is { Length: > 0 } name && data[name] is { } value) output[name]=value.DeepClone(); return output; } }
+    private JsonNode? StorageSetMany(JsonObject p) { lock (StorageLock) { var path=StoragePath(p); var data=ReadStorage(path); foreach(var item in p["values"]?.AsObject() ?? []) data[item.Key]=item.Value?.DeepClone(); Save(path,data); return null; } }
+    private JsonNode StorageSchema(JsonObject p) { lock (StorageLock) return ReadStorage(StoragePath(p))["__mini_schema_version"]?.GetValue<int>() ?? 0; }
+    private JsonNode? StorageSetSchema(JsonObject p) { var version=p["value"]?.GetValue<int>() ?? -1; if(version<0) throw new ApiError("invalid_params","schema version must be non-negative"); lock (StorageLock){var path=StoragePath(p);var data=ReadStorage(path);data["__mini_schema_version"]=version;Save(path,data);return null;} }
+    private JsonNode StorageUsage(JsonObject p) { lock (StorageLock){var path=StoragePath(p);return new JsonObject { ["usedBytes"] = File.Exists(path) ? new FileInfo(path).Length : 0, ["limitBytes"] = 5 * 1024 * 1024 };} }
+    private JsonNode? StorageTransaction(JsonObject p) { var scope=p["scope"]?.GetValue<string>() ?? "private"; if(scope is not ("private" or "public"))throw new ApiError("invalid_params","scope must be private or public"); lock (StorageLock){var path=StoragePath(new JsonObject{{"scope",scope}});var data=ReadStorage(path);try{foreach(var raw in p["operations"]?.AsArray() ?? throw new ApiError("invalid_params","operations is required")){var op=raw?.AsObject()??throw new ApiError("invalid_params","operation must be object");switch(op["type"]?.GetValue<string>()){case "set": data[Key(op)]=op["value"]?.DeepClone();break;case "remove":data.Remove(Key(op));break;case "clear":data=new JsonObject();break;case "setSchemaVersion":var value=op["value"]?.GetValue<int>()??-1;if(value<0)throw new ApiError("invalid_params","schema version must be non-negative");data["__mini_schema_version"]=value;break;default:throw new ApiError("invalid_params","Unknown storage operation");}}Save(path,data);return null;}catch(ApiError){throw;}catch(Exception){throw new ApiError("storage_transaction_failed","Transaction was not applied");}} }
+    private async Task RequirePermissionAsync(string permission)
     {
         if (!manifest.Permissions.Contains(permission)) throw new ApiError("permission_not_declared", $"Permission {permission} is not declared");
-        if (permissions.IsGranted(permission)) return;
+        var state = permissions.State(permission);
+        if (state == "granted") return;
+        if (state == "denied") throw new ApiError("permission_denied", $"Permission {permission} was denied");
+        await RequireUserGestureAsync();
+        if (IsDisposed) throw new ApiError("runtime_closed", "The mini-app has closed");
         if (MessageBox.Show(this, $"{manifest.Name} запрашивает доступ: {permission}", "Разрешение mini-app", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) throw new ApiError("permission_denied", $"Permission {permission} is required");
         permissions.Grant(permission);
     }
@@ -570,7 +712,7 @@ internal sealed class WebAppView : UserControl
     private JsonNode? OpenUrl(JsonObject p) { var raw=p["url"]?.GetValue<string>() ?? ""; if(!Uri.TryCreate(raw,UriKind.Absolute,out var u)||u.Scheme is not ("https" or "http" or "mailto" or "tel"))throw new ApiError("system_url_not_allowed","URL scheme is not allowed"); try{System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(u.ToString()){UseShellExecute=true});return null;}catch{throw new ApiError("system_no_handler","No application can open URL");} }
     private JsonNode? OpenFile(JsonObject p) { var id=p["fileId"]?.GetValue<string>() ?? throw new ApiError("invalid_params","fileId is required"); var path=FileFor(new JsonObject{{"id",id}}); try{System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path){UseShellExecute=true});return null;}catch{throw new ApiError("system_no_handler","No application can open file");} }
     private JsonNode? OpenSettings(JsonObject p) { try{System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:"){UseShellExecute=true});return null;}catch{throw new ApiError("feature_unavailable","Settings are unavailable");} }
-    private static string? PermissionFor(string method) => method.StartsWith("storage.") ? "storage" : method.StartsWith("secureStorage.") ? "secureStorage" : method == "clipboard.write" ? "clipboard.write" : method.StartsWith("clipboard.read") ? "clipboard.read" : method.StartsWith("network.") ? "network" : method.StartsWith("system.") ? "system.open" : method is "files.getAppDirectory" or "files.listAppDirectory" ? null : method is "files.saveText" or "files.saveBase64" ? "files.save" : method is "files.pickDirectory" or "files.listDirectory" or "files.openInDirectory" or "files.createInDirectory" or "files.writeChunk" or "files.flush" or "files.persistDirectory" or "files.restoreDirectory" or "files.forgetDirectory" ? "files.directory" : method.StartsWith("files.") ? "files.pick" : method.StartsWith("share.") ? "share" : null;
+    private static string? PermissionFor(string method) => method.StartsWith("storage.") ? "storage" : method.StartsWith("secureStorage.") ? "secureStorage" : method == "clipboard.write" ? "clipboard.write" : method.StartsWith("clipboard.read") ? "clipboard.read" : method.StartsWith("network.") ? "network" : method.StartsWith("system.") ? "system.open" : method is "files.getAppDirectory" or "files.listAppDirectory" ? null : method is "files.saveText" or "files.saveBase64" ? "files.save" : method is "files.pickDirectory" or "files.listDirectory" or "files.releaseDirectory" or "files.openInDirectory" or "files.createInDirectory" or "files.writeChunk" or "files.writeChecked" or "files.flush" or "files.persistDirectory" or "files.restoreDirectory" or "files.forgetDirectory" ? "files.directory" : method.StartsWith("files.") ? "files.pick" : method.StartsWith("share.") ? "share" : null;
     private void Respond(string id, bool success, JsonNode? result, string? code, string? message)
     {
         var reply = new JsonObject { ["id"] = id, ["success"] = success };
@@ -584,62 +726,6 @@ internal sealed class WebAppView : UserControl
         public bool Repeat { get; } = repeat;
         public bool Running { get; set; } = true;
         public System.Threading.Timer? Timer { get; set; }
-    }
-}
-
-internal sealed class PermissionStore
-{
-    private readonly string path;
-    private readonly Dictionary<string, string> states;
-
-    public PermissionStore(string appId, string appName)
-    {
-        path = Path.Combine(MiniStore.ConfigRoot, "Permissions", FileName(appName));
-        states = Read();
-    }
-
-    public bool IsGranted(string permission) => State(permission) == "granted";
-    public string State(string permission) => states.TryGetValue(permission, out var value) ? value : "prompt";
-
-    public void Grant(string permission)
-    {
-        Set(permission, "granted");
-    }
-    public void Set(string permission, string state)
-    {
-        if (state is not ("granted" or "denied" or "prompt")) throw new ApiError("invalid_params", "Invalid permission state");
-        if (state == "prompt") states.Remove(permission); else states[permission] = state;
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(states));
-    }
-    public void Reset() { states.Clear(); if (File.Exists(path)) File.Delete(path); }
-    public string StateFor(string permission) => State(permission);
-
-    public static void Delete(string appId, string appName)
-    {
-        var file = Path.Combine(MiniStore.ConfigRoot, "Permissions", FileName(appName));
-        if (File.Exists(file)) File.Delete(file);
-    }
-
-    private static string FileName(string appName)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        var name = string.Concat(appName.Trim().Select(ch => invalid.Contains(ch) || char.IsControl(ch) ? '_' : ch)).TrimEnd('.', ' ');
-        return (string.IsNullOrWhiteSpace(name) ? "MiniApp" : name) + ".json";
-    }
-
-
-    private Dictionary<string, string> Read()
-    {
-        try
-        {
-            if (!File.Exists(path)) return [];
-            // Legacy files stored only granted permissions as a JSON array.
-            var node=JsonNode.Parse(File.ReadAllText(path));
-            if(node is JsonArray legacy) return legacy.Where(x=>x?.GetValue<string>() is not null).ToDictionary(x=>x!.GetValue<string>(), _=>"granted");
-            return node?.Deserialize<Dictionary<string,string>>() ?? [];
-        }
-        catch { return []; }
     }
 }
 
@@ -727,15 +813,23 @@ internal sealed record TopBarConfiguration(bool Visible, int Height, int Horizon
     private static Color Lighten(Color color, float amount) => Color.FromArgb(color.A, color.R + (int)((255 - color.R) * amount), color.G + (int)((255 - color.G) * amount), color.B + (int)((255 - color.B) * amount));
 }
 
-internal sealed class NativeTopBar : Panel
+internal class NativeTopBar : Panel
 {
     public event Action? BackRequested;
     public event Action<string>? ActionRequested;
+    protected TopBarConfiguration? Configuration { get; private set; }
+
+    protected void RaiseAction(string id) => ActionRequested?.Invoke(id);
+    protected virtual void ClearExtras() { }
+    protected virtual void AddTitleExtras(TopBarConfiguration config, Label title) { }
+    protected virtual void AddActionExtras(TopBarConfiguration config) { }
 
     public void Apply(TopBarConfiguration config)
     {
+        Configuration = config;
         SuspendLayout();
-        Controls.Clear();
+        ClearExtras();
+        while (Controls.Count > 0) Controls[0].Dispose();
         Visible = config.Visible;
         Height = config.Height;
         BackColor = config.Background;
@@ -743,6 +837,7 @@ internal sealed class NativeTopBar : Panel
         if (!config.Visible) { ResumeLayout(); return; }
 
         var title = new Label { Text = config.Title, Dock = DockStyle.Fill, ForeColor = config.Foreground, BackColor = Color.Transparent, Font = new Font("Segoe UI", config.TitleFontSize, FontStyle.Bold), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
+        AddTitleExtras(config, title);
         Controls.Add(title);
         foreach (var action in config.Actions.Reverse())
         {
@@ -751,11 +846,12 @@ internal sealed class NativeTopBar : Panel
             actionButton.Dock = DockStyle.Right;
             Controls.Add(actionButton);
         }
+        AddActionExtras(config);
         if (config.ShowBack) Controls.Add(CreateButton(config.BackText, config.BackButton, config.Background, () => BackRequested?.Invoke()));
         ResumeLayout();
     }
 
-    private static Control CreateButton(string text, TopBarButtonStyle style, Color hostBackground, Action click)
+    protected static Control CreateButton(string text, TopBarButtonStyle style, Color hostBackground, Action click)
     {
         var button = new TopBarButton(style, hostBackground) { Text = text, AutoSize = true, Dock = DockStyle.Left, Margin = new Padding(0, 0, 10, 0), ForeColor = style.Foreground, Font = new Font("Segoe UI", style.FontSize, FontStyle.Bold), Cursor = Cursors.Hand, Padding = new Padding(style.HorizontalPadding, 0, style.HorizontalPadding, 0) };
         button.Click += (_, _) => click();
@@ -804,7 +900,7 @@ internal sealed class TopBarButton : Control
         TextRenderer.DrawText(e.Graphics, Text, Font, textBounds, ForeColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
     }
 
-    private static GraphicsPath RoundedPath(Rectangle rect, int radius)
+    internal static GraphicsPath RoundedPath(Rectangle rect, int radius)
     {
         if (radius <= 0) { var square = new GraphicsPath(); square.AddRectangle(rect); return square; }
         var diameter = radius * 2;

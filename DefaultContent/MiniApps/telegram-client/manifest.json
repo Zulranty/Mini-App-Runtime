@@ -1,0 +1,10 @@
+{
+  "id": "com.miniapps.telegram",
+  "name": "Unofficial Telegram",
+  "version": "1.4.9",
+  "minRuntimeVersion": "1.5.25",
+  "sdkVersion": 2,
+  "entry": "index.html",
+  "description": "Чаты и отложенные сообщения с файлами через Telegram API",
+  "permissions": ["secureStorage", "files.pick", "system.open", "clipboard.write"]
+}

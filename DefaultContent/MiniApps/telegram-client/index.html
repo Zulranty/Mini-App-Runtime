@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' miniapp: https://assets.miniapps.invalid https://interface.local https://modules.miniapp.local 'wasm-unsafe-eval'; style-src 'self' miniapp: https://assets.miniapps.invalid https://interface.local; connect-src wss://*.web.telegram.org; base-uri 'none'; form-action 'none'">
+  <title>Unofficial Telegram</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="scheduled.css">
+  <script defer src="scheduled.js"></script>
+  <script defer src="app.js"></script>
+  <script defer src="runtime-back.js"></script>
+</head>
+<body>
+  <main>
+    <header class="masthead">
+      <div class="brand" aria-hidden="true">T</div>
+      <div><h1>Unofficial Telegram</h1><p id="account">Личный аккаунт · MiniApps</p><p id="test-server-indicator" hidden>Тестовый сервер Telegram</p></div>
+      <button id="logout" type="button" hidden>Выйти</button>
+    </header>
+    <p id="status" role="status" aria-live="polite"></p>
+
+    <section id="module-panel" class="card" hidden>
+      <h2>Модуль Telegram</h2>
+      <p>В лаунчере MiniApps откройте Settings → Telegram и установите или обновите пакет. Затем вернитесь сюда.</p>
+      <button id="retry-module" type="button" class="primary">Загрузить снова</button>
+    </section>
+
+    <section id="welcome" class="card" hidden>
+      <p id="shared-login-note" hidden>После входа MiniApps сохранит сеанс на этом устройстве и вернёт вас в приложение, которое запросило вход.</p>
+      <button id="cancel-shared-login" type="button" hidden>Вернуться без входа</button>
+      <p id="test-account-note" hidden>Войдите в аккаунт, открытый в Telegram Beta с включённым Test Backend. Код или QR подтверждается в тестовом сеансе.</p>
+      <div id="saved-login" hidden>
+        <h2>Восстановление сеанса</h2>
+        <button id="resume" type="button" class="primary">Повторить подключение</button>
+        <button id="forget" type="button">Удалить сохранённый вход</button>
+      </div>
+      <button id="forget-future" type="button" hidden>Удалить токены повторного входа</button>
+      <form id="login">
+        <h2>Вход в Telegram</h2>
+        <p id="bundled-api" hidden>Реквизиты Telegram API взяты из сборки MiniApps.</p>
+        <button id="manual-api" type="button" hidden>Ввести свои API ID и API hash</button>
+        <fieldset id="api-fields">
+        <details class="api-setup">
+          <summary>Как получить API ID и API hash</summary>
+          <ol>
+            <li>Откройте <a href="https://my.telegram.org/" data-telegram-help>my.telegram.org</a>, введите свой номер в международном формате и подтвердите вход кодом из Telegram.</li>
+            <li>Выберите <a href="https://my.telegram.org/apps" data-telegram-help>API development tools</a>. Если форма открылась впервые, придумайте название и короткое имя приложения, выберите платформу и нажмите <b>Create application</b>.</li>
+            <li>На той же странице скопируйте <b>App api_id</b> в поле «API ID», а <b>App api_hash</b> в поле «API hash» ниже. Если приложение уже создано, используйте значения со страницы без повторной регистрации.</li>
+            <li>Нажмите «Войти по QR» или укажите номер и нажмите «Получить код».</li>
+          </ol>
+          <p><a href="https://core.telegram.org/api/obtaining_api_id" data-telegram-help>Официальная инструкция Telegram</a></p>
+        </details>
+        <label>API ID <input name="apiId" required inputmode="numeric" pattern="[0-9]+" maxlength="10" autocomplete="off"></label>
+        <label>API hash <input name="apiHash" required type="password" maxlength="32" autocomplete="off" spellcheck="false"></label>
+        </fieldset>
+        <label>Номер телефона <input name="phone" type="tel" placeholder="+90 555 123 45 67" maxlength="24" autocomplete="off"></label>
+        <label class="check"><input type="checkbox" name="remember" checked> Сохранить сеанс на этом устройстве</label>
+        <div class="actions">
+          <button type="submit" class="primary">Получить код</button>
+          <button id="login-qr" type="submit" hidden>Войти по QR</button>
+        </div>
+      </form>
+    </section>
+
+    <form id="challenge" class="card" hidden>
+      <h2 id="challenge-title"></h2>
+      <p id="challenge-hint"></p>
+      <label id="challenge-label" for="answer"></label>
+      <input id="answer" required autocomplete="off" spellcheck="false">
+      <div class="actions">
+        <button type="submit" class="primary">Продолжить</button>
+        <button id="cancel" type="button">Отмена</button>
+      </div>
+      <p id="resend-status" hidden></p>
+      <p id="reset-email-status" hidden></p>
+      <details id="code-response" hidden>
+        <summary>Ответ Telegram</summary>
+        <p><code id="code-response-text"></code></p>
+      </details>
+      <div class="actions">
+        <button id="resend" type="button" hidden>Запросить новый код</button>
+        <button id="reset-email" type="button" hidden>Запросить сброс почты</button>
+        <button id="open-fragment" type="button" hidden>Открыть Fragment</button>
+        <button id="switch-qr" type="button" hidden>Войти по QR</button>
+      </div>
+    </form>
+
+    <section id="qr-panel" class="card" hidden>
+      <h2>Вход по QR</h2>
+      <p>На телефоне откройте Telegram → Настройки → Устройства → Подключить устройство и отсканируйте код.</p>
+      <canvas id="qr-code" role="img" aria-label="QR-код для входа в Telegram" hidden></canvas>
+      <button id="cancel-qr" type="button">Отмена</button>
+    </section>
+
+    <section id="new-devices" class="card" aria-label="Новые устройства Telegram" hidden>
+      <h2>Новые устройства Telegram</h2>
+      <div id="new-device-list"></div>
+    </section>
+
+    <nav id="workspace-nav" aria-label="Режим Telegram" hidden>
+      <button type="button" data-view="chats" aria-pressed="true">Чаты</button>
+      <button type="button" data-view="plan" aria-pressed="false">Запланировать</button>
+      <button type="button" data-view="queue" aria-pressed="false">Отложенные</button>
+    </nav>
+
+    <section id="workspace" hidden>
+      <aside class="chats">
+        <div class="section-head"><h2>Чаты</h2><button id="refresh-chats" type="button">Обновить</button></div>
+        <ul id="chat-list"></ul>
+        <button id="more-chats" type="button" hidden>Ещё чаты</button>
+      </aside>
+      <section class="conversation">
+        <div class="section-head">
+          <button id="back" type="button">← Чаты</button>
+          <h2 id="chat-title">Выберите чат</h2>
+          <button id="refresh-chat" type="button" hidden>Обновить</button>
+        </div>
+        <div id="history" class="history">
+          <button id="older" type="button" hidden>Загрузить предыдущие</button>
+          <ul id="messages" aria-label="Сообщения"></ul>
+        </div>
+        <form id="compose" hidden>
+          <textarea id="draft" aria-label="Текст сообщения" rows="2" maxlength="4096" placeholder="Сообщение"></textarea>
+          <button type="submit" class="primary">Отправить</button>
+        </form>
+      </section>
+    </section>
+
+    <form id="schedule-plan" hidden>
+      <section class="schedule-panel">
+        <h2>Сообщение</h2>
+        <label for="schedule-text">Текст</label>
+        <textarea id="schedule-text" rows="6" maxlength="4096" placeholder="Напишите сообщение"></textarea>
+        <div class="schedule-head">
+          <button id="schedule-pick" type="button">Прикрепить файлы</button>
+          <small id="schedule-text-limit"></small>
+        </div>
+        <ul id="schedule-files" aria-label="Прикреплённые файлы"></ul>
+        <label for="schedule-time">Время отправки</label>
+        <input id="schedule-time" type="time" required>
+        <small id="schedule-time-zone"></small>
+        <fieldset class="schedule-days">
+          <legend>Дни отправки</legend>
+          <div id="schedule-days"></div>
+          <button id="schedule-add-day" type="button">Добавить день</button>
+        </fieldset>
+      </section>
+      <section class="schedule-panel">
+        <div class="schedule-head">
+          <h2>Получатели</h2>
+          <button id="schedule-refresh-chats" type="button">Обновить</button>
+        </div>
+        <label for="schedule-search">Поиск по чатам</label>
+        <input id="schedule-search" type="search" placeholder="Название чата" autocomplete="off">
+        <ul id="schedule-chats" aria-label="Список чатов"></ul>
+        <div class="schedule-head schedule-submit">
+          <small id="schedule-selected" aria-live="polite"></small>
+          <small id="schedule-deliveries" aria-live="polite"></small>
+          <button type="submit" class="primary">Запланировать</button>
+        </div>
+      </section>
+      <ul id="schedule-results" aria-label="Результаты планирования" aria-live="polite" hidden></ul>
+      <button id="schedule-new-draft" type="button" hidden>Новый черновик</button>
+    </form>
+
+    <section id="schedule-queue" hidden>
+      <div class="schedule-panel schedule-queue-toolbar">
+        <div class="schedule-head">
+          <h2>Очередь Telegram</h2>
+          <button id="schedule-refresh-queue" type="button">Обновить</button>
+          <button id="schedule-stop-scan" type="button" hidden>Остановить проверку</button>
+          <button id="schedule-cancel-all" class="danger" type="button">Отменить всё</button>
+        </div>
+        <p id="schedule-summary" role="status"></p>
+        <details id="schedule-issues" hidden>
+          <summary>Недоступные очереди</summary>
+          <ul></ul>
+        </details>
+      </div>
+      <div id="schedule-queue-list"></div>
+    </section>
+  </main>
+</body>
+</html>

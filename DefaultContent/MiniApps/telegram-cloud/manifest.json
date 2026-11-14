@@ -1,0 +1,10 @@
+{
+  "id": "com.miniapps.telegram-cloud",
+  "name": "Облако файлов",
+  "version": "1.9.1",
+  "sdkVersion": 2,
+  "minRuntimeVersion": "1.5.25",
+  "entry": "index.html",
+  "description": "Файлы и предпросмотр в приватном канале через Telegram API",
+  "permissions": ["files.pick", "files.save", "files.directory", "telegram.session"]
+}
